@@ -15,6 +15,7 @@
 #   waypoint <dir> --i-trust-this-code   permit the lanes that run the target's own code (or WAYPOINT_TRUSTED=1)
 #   waypoint <dir> --calibrate     recompute per-rule precision from past verdicts before ranking
 #   waypoint <dir> --fast          fast tier (DEFAULT): deterministic scanners only, no agent/CodeQL — seconds, $0
+#   waypoint <dir> --deploy        "safe to ship?" — recall-biased deploy-risk profile + a plain readiness rollup
 #   waypoint <dir> --changed       incremental: scan only files changed in the working tree (+ cached baseline)
 #   waypoint <dir> --since REF     incremental: scan only files changed since git REF (branch/commit)
 #   waypoint --test                run Waypoint's own test suite
@@ -43,7 +44,7 @@ usage() {
 }
 
 TARGET=""; DISPATCH=0; BACKEND=""; TOPN=""; GATE=0; LOGIC=0; CODEQL=0; ALL=0; CALIBRATE=0
-FAST=0; CHANGED=0; CHANGED_REF=""; TRUST=0; INVESTIGATE=0
+FAST=0; CHANGED=0; CHANGED_REF=""; TRUST=0; INVESTIGATE=0; DEPLOY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --test)       exec "$PY" -m pytest "$ROOT/tests" -q ;;
@@ -60,6 +61,7 @@ while [ $# -gt 0 ]; do
     --calibrate)  CALIBRATE=1 ;;
     --all|--deep) ALL=1 ;;
     --fast)       FAST=1 ;;
+    --deploy)     DEPLOY=1 ;;
     --i-trust-this-code) TRUST=1 ;;
     --changed)    CHANGED=1 ;;
     --since)      CHANGED=1; CHANGED_REF="${2:-}"; shift ;;
@@ -77,6 +79,14 @@ done
 # Tier label for the banner. The agent (--dispatch) is never part of a tier — it
 # only verifies what the deterministic tiers rank.
 TIER="fast"; { [ "$LOGIC" = 1 ] || [ "$CODEQL" = 1 ]; } && TIER="deep"
+# --deploy: recall-biased "is it safe to ship?" profile. Re-enable the server-side
+# authz checks (exposed endpoints / mass-assignment / privilege-from-request) the
+# lean default keeps in experimental. Local rules only = offline-safe; the
+# deploy-check skill can add OSS packs (p/owasp-top-ten p/secrets) when online.
+if [ "$DEPLOY" = 1 ]; then
+  TIER="deploy"
+  export SEMGREP_EXTRA="${SEMGREP_EXTRA:-} $ROOT/infra/experimental/python/authz $ROOT/infra/experimental/typescript/authz"
+fi
 
 # The dynamic lanes (--logic / --deep) EXECUTE the target's own code (its tests,
 # fuzzers, build scripts). Refuse on untrusted code unless explicitly allowed.
@@ -188,6 +198,12 @@ echo "[waypoint] ── drop beacons (.md) ────────────�
 # beacon here" is never silently mistaken for "this code is safe".
 echo "[waypoint] ── coverage map (blind spots / dark zone) ─────────────"
 "$PY" "$ROOT/prioritise/coverage.py" "$TARGET" || true
+
+if [ "$DEPLOY" = 1 ]; then
+  echo "[waypoint] ── deploy readiness ──────────────────────────────────"
+  "$PY" "$ROOT/prioritise/deploy_readiness.py" "$ROOT/reports/ranked.sarif" \
+    --blindspots "$ROOT/reports/blindspots.json" --base "$TARGET" || true
+fi
 
 if [ "$DISPATCH" = 1 ]; then
   echo "[waypoint] ── dispatch ───────────────────────────────────────────"

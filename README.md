@@ -107,9 +107,17 @@ Results land in `beacons/INDEX.md` (ranked suspicions), `beacons/BLINDSPOTS.md`
 (the **dark zone** — regions it could *not* verify), and `reports/ranked.sarif`.
 Put it on your `PATH` with `ln -s "$(pwd)/bin/waypoint" /usr/local/bin/waypoint`.
 
+> **Shipping an AI-built app and just want "is this safe?"** Don't run anything
+> yourself — ask your coding agent: *"check if this is safe to deploy."* The bundled
+> **[`deploy-check` skill](skills/deploy-check/SKILL.md)** runs `bin/waypoint <dir> --deploy`
+> (a recall-biased pass for the risks that sink a fresh deploy — leaked secrets,
+> exposed endpoints, injection, TLS-off, wildcard CORS) and hands you a plain-English
+> 🔴 / 🟡 / 🟢 verdict + a short fix list. No jargon, no API key.
+
 <details><summary><b>All the tiers &amp; flags</b></summary>
 
 ```bash
+bin/waypoint <repo> --deploy          # "safe to ship?" — recall-biased deploy-risk profile + readiness rollup
 bin/waypoint <repo> --changed         # incremental: only files changed vs git (+ cached baseline)
 bin/waypoint <repo> --deep            # DEEP tier: CodeQL + logic lane — RUNS TARGET CODE (needs --i-trust-this-code)
 bin/waypoint-sandboxed <repo> --deep  # ...or run untrusted code isolated (no network · read-only · non-root)

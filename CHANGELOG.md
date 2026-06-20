@@ -5,6 +5,20 @@ All notable changes to Waypoint. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **`deploy-check` skill + `--deploy` profile — a plain-English "is it safe to ship?"
+  verdict for non-technical / vibe-coder users.** `bin/waypoint <dir> --deploy` runs a
+  recall-biased pass on the risks that sink a fresh deploy (leaked secrets, exposed /
+  unauthenticated endpoints, injection / RCE / SSRF, TLS-off, wildcard CORS — re-enabling
+  the authz checks for this profile only) and writes a `reports/deploy_readiness.json`
+  rollup (ship-stoppers / review / dark-near-danger → suggested 🔴/🟡/🟢, pre-verification).
+  The new **agent-default `deploy-check` skill** (`skills/deploy-check/`) drives it: it
+  offers itself proactively when a user is about to ship, verifies each ship-stopper and
+  each dark-zone-near-danger spot by reading the code, then gives the human a verdict + a
+  short fix list in plain English — no jargon, no API key, nothing for them to install.
+  Validated: DSVW → 🔴 (13 ship-stoppers), ky → 🟡 (0 issues, 4 dark spots to hand-check).
+  +4 tests (119 total).
+
 ### Changed
 - **Leaned into the dark zone; cut detection to the additive core.** Repositioned the
   pitch around the one thing no linter does — the **dark-zone map** (what a static pass
