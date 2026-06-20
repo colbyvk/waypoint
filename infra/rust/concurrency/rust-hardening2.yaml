@@ -1,0 +1,49 @@
+# Waypoint hardening2 rules — Rust / concurrency (proxy detectors; recall-biased).
+# NEW shapes only. Does NOT duplicate lock-across-await / rc-near-spawn
+# (rust-hardening.yaml) or the Arc/Mutex/spawn primitive marker (rust.yaml).
+rules:
+  - id: waypoint-rust-unbounded-channel-near-spawn
+    languages: [rust]
+    severity: INFO
+    message: >
+      An unbounded channel (mpsc::channel) is created in a function that also
+      spawns a task/thread. Agent: can a fast producer outrun the consumer with
+      no backpressure, growing the queue without bound (memory DoS)? Consider
+      sync_channel / bounded.
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, abuse]
+      waypoint_hypothesis: "unbounded mpsc::channel near spawn — no backpressure, queue grows unbounded?"
+    patterns:
+      - pattern-either:
+          - pattern: std::sync::mpsc::channel()
+          - pattern: mpsc::channel()
+          - pattern: tokio::sync::mpsc::unbounded_channel()
+          - pattern: mpsc::unbounded_channel()
+      - pattern-either:
+          - pattern-inside: "fn $FN(...) -> $R { ... }"
+          - pattern-inside: "fn $FN(...) { ... }"
+          - pattern-inside: "async fn $FN(...) -> $R { ... }"
+          - pattern-inside: "async fn $FN(...) { ... }"
+      - pattern-either:
+          - pattern-inside: "{ ...; thread::spawn(...); ... }"
+          - pattern-inside: "{ ...; std::thread::spawn(...); ... }"
+          - pattern-inside: "{ ...; tokio::spawn(...); ... }"
+
+  - id: waypoint-rust-arc-refcell
+    languages: [rust]
+    severity: WARNING
+    message: >
+      Arc<RefCell<...>> shares a RefCell across threads, but RefCell is not
+      thread-safe (not Sync) and its borrow checks are not atomic. Agent: is this
+      actually shared across threads (should be Arc<Mutex<...>> / RwLock)?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "Arc<RefCell<...>> — non-thread-safe interior mutability shared across threads (data race / panic)?"
+    patterns:
+      - pattern-either:
+          - pattern: "Arc::new(RefCell::new(...))"
+          - pattern: "Arc::new(std::cell::RefCell::new(...))"
+          - pattern: "let $X: Arc<RefCell<$T>> = $E;"
+          - pattern: "let $X: Arc<RefCell<$T>>;"

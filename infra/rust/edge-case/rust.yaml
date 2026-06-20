@@ -1,0 +1,19 @@
+# Waypoint edge-case rules — Rust (spec §3.2.2)
+# .unwrap()/.expect()/panic! are reachable panics. Overlaps Clippy's
+# unwrap_used/expect_used; kept as house rules for a Semgrep-only stance.
+rules:
+  - id: waypoint-rust-unwrap-panic
+    languages: [rust]
+    severity: INFO
+    message: >
+      `.unwrap()`/`.expect()`/`panic!` can abort the program. Agent: can the
+      Result/Option actually be Err/None here on a real (esp. untrusted) input?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "unwrap/expect/panic — reachable panic on a real input (DoS)?"
+    patterns:
+      - pattern-either:
+          - pattern: $X.unwrap()
+          - pattern: $X.expect(...)
+          - pattern: panic!(...)

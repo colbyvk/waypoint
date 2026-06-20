@@ -1,0 +1,41 @@
+# Waypoint hardening2 rules — Python / concurrency (proxy detectors; recall-biased).
+# NEW shapes only. Complements the existing ASYNC shared-mutable rule
+# (python.yaml) and blocking-call-in-async / fire-and-forget (python-hardening.yaml)
+# by covering THREAD-based shared mutable state with no lock.
+rules:
+  - id: waypoint-py-thread-shared-mutable-nolock
+    languages: [python]
+    severity: WARNING
+    message: >
+      Module-level mutable state (dict/list/counter) is mutated inside a function
+      with no visible lock held. Agent: is this function run via
+      threading.Thread / ThreadPoolExecutor so concurrent threads race on this
+      shared state (lost updates / corruption)? Guard with a Lock.
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, abuse]
+      waypoint_hypothesis: "module-level dict/list/counter mutated in a def with no lock — data race under threads?"
+    patterns:
+      - pattern-inside: |
+          def $FN(...):
+              ...
+      - pattern-either:
+          - pattern: $G[$K] = $VAL
+          - pattern: $G[$K] += $VAL
+          - pattern: $G += $VAL
+          - pattern: $G -= $VAL
+          - pattern: $G.append(...)
+          - pattern: $G.extend(...)
+          - pattern: $G.update(...)
+          - pattern: $G.pop(...)
+      - metavariable-regex:
+          metavariable: $G
+          # heuristic: module-level shared containers are usually UPPER_CASE or
+          # have a shared-ish name; never self.* (instance state) — exclude that.
+          regex: '^(?!self$).+'
+      # not obviously protected by a lock context
+      - pattern-not-inside: |
+          with $LOCK:
+              ...
+      - pattern-not: self.$ATTR = $VAL
+      - pattern-not: self.$ATTR += $VAL

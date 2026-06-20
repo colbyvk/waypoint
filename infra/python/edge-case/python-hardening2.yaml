@@ -1,0 +1,71 @@
+# Waypoint hardening2 rules — Python / edge-case (proxy detectors; recall-biased).
+# NEW shapes only. Does NOT duplicate bare-except / except…: pass (python.yaml)
+# or mutable-default / request-no-timeout / assert / open-without-with
+# (python-hardening.yaml).
+rules:
+  - id: waypoint-py-toctou-exists-open
+    languages: [python]
+    severity: WARNING
+    message: >
+      A path is existence-checked (os.path.exists/isfile) and then opened in the
+      same block — the file can change between the check and the open. Agent:
+      confirm this two-step (TOCTOU) is safe, or open and handle the error
+      directly.
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case, security]
+      waypoint_hypothesis: "os.path.exists/isfile($P) then open($P) — file swapped between check and use (TOCTOU)?"
+    patterns:
+      - pattern-either:
+          - pattern: open($P)
+          - pattern: open($P, ...)
+      - pattern-not: open("...")
+      - pattern-not: open("...", ...)
+      - pattern-either:
+          - pattern-inside: |
+              if os.path.exists($P):
+                  ...
+          - pattern-inside: |
+              if os.path.isfile($P):
+                  ...
+          - pattern-inside: |
+              if os.path.isdir($P):
+                  ...
+          - pattern-inside: |
+              if not os.path.exists($P):
+                  ...
+              ...
+          - pattern-inside: |
+              if os.access($P, ...):
+                  ...
+
+  - id: waypoint-py-reraise-loses-context
+    languages: [python]
+    severity: INFO
+    message: >
+      An except handler raises a different exception without `from` (or `from
+      None` is used), discarding the original traceback/cause. Agent: is the root
+      cause being hidden, making failures hard to diagnose? Use `raise New(...)
+      from $E`.
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "except raises a different error with no `from` — original cause/traceback lost?"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              try:
+                  ...
+              except $E:
+                  ...
+                  raise $NEW(...)
+          - pattern: |
+              try:
+                  ...
+              except $E as $V:
+                  ...
+                  raise $NEW(...)
+      - pattern-not: raise $NEW(...) from $V
+      - pattern-not: raise $NEW(...) from $E
+      - pattern-not: raise $V
+      - pattern-not: raise $E

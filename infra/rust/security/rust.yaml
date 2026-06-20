@@ -1,0 +1,19 @@
+# Waypoint house security rules — Rust (spec §3.2.1)
+rules:
+  - id: waypoint-rust-command-shell
+    languages: [rust]
+    severity: WARNING
+    message: >
+      Constructing a shell command (sh/bash). Agent: is any argument
+      attacker-controlled (command injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "Command::new(\"sh\"/\"bash\") — interpolated arg leading to command injection?"
+    patterns:
+      - pattern-either:
+          - pattern: Command::new("sh")
+          - pattern: Command::new("bash")
+          - pattern: std::process::Command::new("sh")
+          - pattern: std::process::Command::new("bash")
+          - pattern: process::Command::new("sh")

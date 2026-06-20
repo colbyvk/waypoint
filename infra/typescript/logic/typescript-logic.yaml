@@ -1,0 +1,85 @@
+# Waypoint logic-smell rules — TypeScript / JavaScript (also covers React .tsx).
+# Internally-wrong code a pattern can catch: assignment where a comparison was
+# meant, lexicographic number sorts, self/NaN comparisons that are constant,
+# dead constant branches. Net-new: loose-equality (==) and empty-catch already
+# live under edge-case; these do not duplicate them.
+rules:
+  - id: waypoint-ts-logic-assignment-in-condition
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Assignment (`=`) inside a condition — almost always a typo for `===`. The
+      branch is taken on the assigned value, not a comparison. Agent: confirm
+      intent.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "assignment (=) used in an if/while condition — meant === comparison?"
+    patterns:
+      - pattern-either:
+          - pattern: if ($X = $Y) { ... }
+          - pattern: while ($X = $Y) { ... }
+
+  - id: waypoint-ts-logic-sort-no-comparator
+    languages: [typescript]
+    severity: INFO
+    message: >
+      `.sort()` with no comparator sorts by UTF-16 string order — so [10,9,1]
+      becomes [1,10,9]. Agent: if this array is numeric, a comparator is required.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "Array.sort() with no comparator — lexicographic order is wrong for numbers; confirm element type."
+    patterns:
+      - pattern: $ARR.sort()
+
+  - id: waypoint-ts-logic-self-comparison
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A value is compared to itself (constant True/False, save the `x !== x` NaN
+      idiom). Agent: confirm this isn't a typo for a different operand.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "self-comparison ($X === $X / !==) is constant — likely a typo for a different operand?"
+    patterns:
+      - pattern-either:
+          - pattern: $X === $X
+          - pattern: $X !== $X
+          - pattern: $X == $X
+          - pattern: $X != $X
+
+  - id: waypoint-ts-logic-constant-condition
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Constant `if` condition — one branch is dead code. Agent: confirm this isn't
+      a leftover debug toggle or an inverted condition.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "constant if-condition (if (true) / if (false)) — dead branch or leftover toggle?"
+    patterns:
+      - pattern-either:
+          - pattern: if (true) { ... }
+          - pattern: if (false) { ... }
+
+  - id: waypoint-ts-logic-nan-comparison
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Comparing with NaN via ==/=== is always false (NaN !== NaN). Use
+      Number.isNaN(). Agent: this NaN check never matches — confirm the bug.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "comparison against NaN (=== NaN / != NaN) is always false/true — must use Number.isNaN()."
+    patterns:
+      - pattern-either:
+          - pattern: $X === NaN
+          - pattern: $X !== NaN
+          - pattern: $X == NaN
+          - pattern: $X != NaN
+          - pattern: NaN === $X
+          - pattern: NaN !== $X

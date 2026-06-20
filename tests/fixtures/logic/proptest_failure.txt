@@ -1,0 +1,19 @@
+running 2 tests
+test tests::prop_add_commutes ... ok
+test tests::prop_clamp_in_bounds ... FAILED
+
+failures:
+
+---- tests::prop_clamp_in_bounds stdout ----
+thread 'tests::prop_clamp_in_bounds' panicked at src/math.rs:23:9:
+Test failed: assertion failed: lo <= got && got <= hi; minimal failing input: x = 0, lo = 0, hi = -1
+	successes: 17
+	local rejects: 0
+	global rejects: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::prop_clamp_in_bounds
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out

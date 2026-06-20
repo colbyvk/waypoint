@@ -1,0 +1,17 @@
+# Intentionally insecure sample crate -- Waypoint test fixture. Do not deploy.
+[package]
+name = "rust_service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+libc = "0.2"
+
+[[bin]]
+name = "rust_service"
+path = "src/main.rs"
+
+[lib]
+name = "rust_service"
+path = "src/lib.rs"

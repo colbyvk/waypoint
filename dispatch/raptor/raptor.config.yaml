@@ -1,0 +1,33 @@
+# RAPTOR integration config stub (spec §8).
+# This points a RAPTOR harness at Waypoint's ranked beacons instead of (or in
+# addition to) RAPTOR's own Semgrep/CodeQL discovery. Adjust keys to match the
+# RAPTOR version you cloned — treat this as the mapping you need to provide,
+# not a turnkey file.
+
+# Where RAPTOR reads Waypoint's deduped, ranked, multi-tagged beacons.
+input_sarif: ../../reports/ranked.sarif
+
+# Respect Waypoint's budget: only the top-ranked beacons get an agent visit.
+budget:
+  top_n: 25                      # mirror dispatch.budget_top_n in waypoint.config.yaml
+  order_by: properties.waypoint.score
+
+# Use Waypoint's framed question as the agent's task, and the assembled region +
+# callers/callees as the evidence. Keep the agent a verifier, not an explorer.
+prompt:
+  hypothesis_field: properties.waypoint.hypothesis
+  mode: verify                   # confirm | dismiss | escalate, with code evidence
+  context: callers_and_callees
+
+# Let RAPTOR keep doing what it is best at, but do NOT re-discover the regions
+# Waypoint already mapped (avoid double-dispatch on the same content_hash).
+dedup_key: properties.waypoint.content_hash
+
+# CodeQL path satisfiability gating (RAPTOR feature): drop a beacon before the LLM
+# call when its path is provably unreachable (spec §5, §8).
+codeql:
+  drop_unsatisfiable_paths: true
+
+# Map verdicts back into Waypoint's shared suppression memory. After RAPTOR runs:
+#   python ../fallback_dispatcher.py --record <raptor_verdicts.json>
+verdicts_out: ../../reports/verdicts.json

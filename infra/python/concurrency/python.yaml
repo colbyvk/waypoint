@@ -1,0 +1,64 @@
+# Waypoint concurrency-proxy rules — Python (spec §6.1)
+#
+# These are PROXY detectors. They do not claim a race exists; they flag regions
+# that obviously involve concurrency so the agent can reason about them. Tune
+# for recall of concurrency-present regions, not precision about bugs. The
+# source of truth for each shape is hazards/ (plain English + bad/ok examples).
+rules:
+  # --- highest-value beacon: shared mutable state mutated inside async, no lock -
+  - id: waypoint-py-async-shared-mutable
+    languages: [python]
+    severity: WARNING
+    message: >
+      Concurrency present (async) with mutation of shared (dict/list/counter or
+      object) state and no visible lock held. Agent: confirm or deny a data race
+      on this shared state across concurrent tasks.
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, abuse]
+      waypoint_hypothesis: "async mutation of shared state with no lock held — data race on a value-bearing structure?"
+      references:
+        - https://docs.python.org/3/library/asyncio-sync.html
+    patterns:
+      - pattern-inside: |
+          async def $FN(...):
+            ...
+      - pattern-either:
+          - pattern: $G[$K] = $VAL
+          - pattern: $G[$K] += $VAL
+          - pattern: $G += $VAL
+          - pattern: $G.$ATTR = $VAL
+          - pattern: $G.append(...)
+          - pattern: $G.update(...)
+      # not obviously protected by a lock context
+      - pattern-not-inside: |
+          async with $LOCK:
+            ...
+      - pattern-not-inside: |
+          with $LOCK:
+            ...
+      # exclude instance-attribute writes (self.x = ...) — usually not shared
+      - pattern-not: self.$ATTR = $VAL
+
+  # --- concurrency-present markers: the primitive itself is the beacon ----------
+  - id: waypoint-py-concurrency-primitive
+    languages: [python]
+    severity: INFO
+    message: >
+      Concurrency primitive in use. Agent: is any shared state read/written here
+      without synchronization?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "concurrency primitive present — unsynchronized shared-state access nearby?"
+    patterns:
+      - pattern-either:
+          - pattern: threading.Thread(...)
+          - pattern: threading.Thread
+          - pattern: multiprocessing.Process(...)
+          - pattern: concurrent.futures.ThreadPoolExecutor(...)
+          - pattern: concurrent.futures.ProcessPoolExecutor(...)
+          - pattern: ThreadPoolExecutor(...)
+          - pattern: asyncio.gather(...)
+          - pattern: asyncio.create_task(...)
+          - pattern: asyncio.ensure_future(...)

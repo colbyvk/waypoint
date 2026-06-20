@@ -1,0 +1,26 @@
+# Waypoint house abuse rules — TypeScript (language-general; spec §3.2.4)
+rules:
+  - id: waypoint-ts-redos
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      RegExp with nested/overlapping quantifiers. Agent: can a crafted input
+      cause catastrophic backtracking (ReDoS)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse, security]
+      waypoint_hypothesis: "RegExp with nested quantifiers on input — catastrophic backtracking (ReDoS)?"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: new RegExp($RE, ...)
+              - metavariable-regex:
+                  metavariable: $RE
+                  regex: '\([^)]*[+*][^)]*\)[+*]'
+          - patterns:
+              - pattern: new RegExp($RE)
+              - metavariable-regex:
+                  metavariable: $RE
+                  regex: '\([^)]*[+*][^)]*\)[+*]'
+          # regex literal form: /(\w+)+$/
+          - pattern-regex: '/\([^)]*[+*][^)]*\)[+*][^/]*/[gimsuy]*'

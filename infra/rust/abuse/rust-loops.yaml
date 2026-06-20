@@ -1,0 +1,17 @@
+# Waypoint loop / compute-DoS rules — Rust
+rules:
+  - id: waypoint-rust-infinite-loop
+    languages: [rust]
+    severity: INFO
+    message: >
+      Infinite loop (`loop {}` / `while true`). Agent: is there a reachable
+      break/return/.await exit, or can it spin forever (dead loop / busy-spin
+      burning a core)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "infinite loop (loop / while true) — bounded exit, or a dead loop / CPU busy-spin?"
+    patterns:
+      - pattern-either:
+          - pattern: "loop { ... }"
+          - pattern: "while true { ... }"

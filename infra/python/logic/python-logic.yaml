@@ -1,0 +1,109 @@
+# Waypoint logic-smell rules — Python (static correctness, not security).
+# These flag code that is internally WRONG independent of intent — identity-vs-
+# equality traps, self-comparisons, control flow that silently swallows
+# exceptions, dead constant branches. They raise the `logic` axis on the plain
+# (non --logic) scan. Net-new: bare-except / swallowed-exception / mutable-
+# default-arg already live under edge-case + abuse; these do not duplicate them.
+rules:
+  - id: waypoint-py-logic-self-comparison
+    languages: [python]
+    severity: WARNING
+    message: >
+      A value is compared to itself, which is constant True/False (save the rare
+      NaN idiom). Agent: confirm this isn't a typo for a different operand.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "self-comparison ($X == $X / $X != $X) is constant — likely a typo for a different operand?"
+    patterns:
+      - pattern-either:
+          - pattern: $X == $X
+          - pattern: $X != $X
+
+  - id: waypoint-py-logic-is-literal
+    languages: [python]
+    severity: WARNING
+    message: >
+      `is` / `is not` tests object identity, not value; against an int/str literal
+      it only works by CPython interning accident. Agent: should this be `==`?
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "identity check against a literal ($X is <int/str>) — value comparison (==) almost certainly meant?"
+    patterns:
+      - pattern-either:
+          - pattern: $X is $LIT
+          - pattern: $X is not $LIT
+      - metavariable-pattern:
+          metavariable: $LIT
+          patterns:
+            - pattern-either:
+                - pattern-regex: '^-?\d+$'
+                - pattern-regex: '^-?\d+\.\d+$'
+                - pattern-regex: '^[''"].*[''"]$'
+
+  - id: waypoint-py-logic-return-in-finally
+    languages: [python]
+    severity: WARNING
+    message: >
+      A return/break/continue inside `finally` swallows any in-flight exception
+      and overrides the try/except outcome. Agent: confirm exceptions aren't being
+      silently discarded here.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "control flow (return/break/continue) inside finally — silently discards exceptions or the real return value?"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              try:
+                ...
+              finally:
+                ...
+                return ...
+          - pattern: |
+              try:
+                ...
+              finally:
+                ...
+                break
+          - pattern: |
+              try:
+                ...
+              finally:
+                ...
+                continue
+
+  - id: waypoint-py-logic-constant-condition
+    languages: [python]
+    severity: INFO
+    message: >
+      Constant `if` condition — one branch is dead code. Agent: confirm this isn't
+      a debugging toggle left in, or an inverted/forgotten condition.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "constant if-condition (if True / if False) — dead branch or a leftover debug toggle?"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if True:
+                  ...
+          - pattern: |
+              if False:
+                  ...
+
+  - id: waypoint-py-logic-eq-none
+    languages: [python]
+    severity: INFO
+    message: >
+      Equality against None should use `is None` / `is not None`; `== None` can be
+      subverted by a custom __eq__. Agent: confirm the intended None check.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "`== None` / `!= None` instead of `is None` — a custom __eq__ could make this check lie?"
+    patterns:
+      - pattern-either:
+          - pattern: $X == None
+          - pattern: $X != None

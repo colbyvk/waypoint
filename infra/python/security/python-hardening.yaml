@@ -1,0 +1,307 @@
+# Waypoint hardening rules — Python / security
+# NEW proxy detectors authored for Waypoint hardening. These optimize for RECALL
+# of a hazard-present region (an LLM agent verifies later), not precision.
+# They intentionally do NOT duplicate shapes already covered in python.yaml
+# (eval/exec, subprocess shell=True / os.system already there, SQL string-build,
+# verify=False TLS, path traversal).
+rules:
+  - id: waypoint-py-unsafe-deser
+    languages: [python]
+    severity: ERROR
+    message: >
+      Unsafe deserialization (pickle/marshal) of a byte stream that may be
+      attacker-controlled. Agent: can untrusted bytes reach this call (arbitrary
+      code execution on load)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "pickle/marshal load of untrusted bytes — RCE on deserialization?"
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads(...)
+          - pattern: pickle.load(...)
+          - pattern: marshal.loads(...)
+          - pattern: marshal.load(...)
+          - pattern: cPickle.loads(...)
+          - pattern: cPickle.load(...)
+
+  - id: waypoint-py-yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: >
+      yaml.load() without SafeLoader can instantiate arbitrary Python objects.
+      Agent: is the YAML source untrusted (object-injection / RCE)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "yaml.load without SafeLoader on untrusted input — object injection / RCE?"
+    patterns:
+      - pattern-either:
+          - pattern: yaml.load($X)
+          - pattern: yaml.load($X, Loader=yaml.Loader)
+          - pattern: yaml.load($X, Loader=yaml.FullLoader)
+          - pattern: yaml.load($X, yaml.Loader)
+          - pattern: yaml.load($X, yaml.FullLoader)
+      - pattern-not: yaml.load($X, Loader=yaml.SafeLoader)
+      - pattern-not: yaml.load($X, Loader=yaml.CSafeLoader)
+      - pattern-not: yaml.load($X, yaml.SafeLoader)
+
+  - id: waypoint-py-ssti-render-template-string
+    languages: [python]
+    severity: ERROR
+    message: >
+      flask render_template_string() with a non-literal template string. Agent:
+      can user input reach the template body (server-side template injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "render_template_string on a non-literal template — SSTI if input reaches the body?"
+    patterns:
+      - pattern: render_template_string($X, ...)
+      - pattern-not: render_template_string("...", ...)
+      - pattern-not: render_template_string("...")
+
+  - id: waypoint-py-jinja-autoescape-off
+    languages: [python]
+    severity: WARNING
+    message: >
+      Jinja2 Environment constructed with autoescape disabled. Agent: is any
+      rendered value attacker-controlled and emitted as HTML (XSS)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "jinja2 Environment(autoescape=False) — XSS on rendered user content?"
+    patterns:
+      - pattern-either:
+          - pattern: Environment(..., autoescape=False, ...)
+          - pattern: jinja2.Environment(..., autoescape=False, ...)
+
+  - id: waypoint-py-django-mark-safe
+    languages: [python]
+    severity: WARNING
+    message: >
+      django mark_safe() on a non-literal value bypasses auto-escaping. Agent:
+      is the marked value attacker-controlled (stored/reflected XSS)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "mark_safe on a non-literal — XSS if the value is user-controlled?"
+    patterns:
+      - pattern: mark_safe($X)
+      - pattern-not: mark_safe("...")
+
+  - id: waypoint-py-ssrf-nonliteral-url
+    languages: [python]
+    severity: WARNING
+    message: >
+      Outbound HTTP request to a non-literal URL. Agent: is the destination
+      derived from user input without an allowlist (SSRF)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "HTTP client called with a non-literal URL — SSRF if destination is user-controlled?"
+    patterns:
+      - pattern-either:
+          - pattern: requests.get($URL, ...)
+          - pattern: requests.get($URL)
+          - pattern: requests.post($URL, ...)
+          - pattern: requests.post($URL)
+          - pattern: requests.put($URL, ...)
+          - pattern: requests.put($URL)
+          - pattern: requests.delete($URL, ...)
+          - pattern: requests.delete($URL)
+          - pattern: requests.head($URL, ...)
+          - pattern: requests.patch($URL, ...)
+          - pattern: httpx.get($URL, ...)
+          - pattern: httpx.get($URL)
+          - pattern: httpx.post($URL, ...)
+          - pattern: urllib.request.urlopen($URL, ...)
+          - pattern: urllib.request.urlopen($URL)
+      - metavariable-pattern:
+          metavariable: $URL
+          patterns:
+            - pattern-not: '"..."'
+
+  - id: waypoint-py-weak-hash
+    languages: [python]
+    severity: WARNING
+    message: >
+      Weak hash (MD5/SHA1). Agent: is this used for security (passwords,
+      signatures, integrity, token derivation) rather than a non-security checksum?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "md5/sha1 — used in a security-sensitive context (collisions/preimage)?"
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+          - pattern: hashlib.new("md5", ...)
+          - pattern: hashlib.new("sha1", ...)
+
+  - id: waypoint-py-weak-tls-proto
+    languages: [python]
+    severity: WARNING
+    message: >
+      Obsolete TLS/SSL protocol version selected. Agent: confirm this endpoint
+      negotiates a deprecated protocol (downgrade / MITM exposure).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "PROTOCOL_TLSv1/SSLv3 — deprecated protocol enabling downgrade/MITM?"
+    patterns:
+      - pattern-either:
+          - pattern: ssl.PROTOCOL_TLSv1
+          - pattern: ssl.PROTOCOL_TLSv1_1
+          - pattern: ssl.PROTOCOL_SSLv3
+          - pattern: ssl.PROTOCOL_SSLv2
+
+  - id: waypoint-py-cipher-ecb
+    languages: [python]
+    severity: WARNING
+    message: >
+      Block cipher in ECB mode leaks plaintext structure (identical blocks map to
+      identical ciphertext). Agent: is sensitive data encrypted under ECB here?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "AES/DES MODE_ECB — pattern leakage on sensitive plaintext?"
+    patterns:
+      - pattern-either:
+          - pattern: $CIPHER.new(..., $CIPHER.MODE_ECB, ...)
+          - pattern: $CIPHER.new(..., $CIPHER.MODE_ECB)
+          - pattern: $CIPHER.new(..., mode=$CIPHER.MODE_ECB, ...)
+          - pattern: AES.new(..., AES.MODE_ECB, ...)
+          - pattern: DES.new(..., DES.MODE_ECB, ...)
+
+  - id: waypoint-py-insecure-random
+    languages: [python]
+    severity: WARNING
+    message: >
+      Non-cryptographic RNG (random module). Agent: is the output used as a
+      secret, token, password, salt, nonce, or session id (predictable values)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "random.* output used as a token/secret/nonce — predictable, should be secrets/os.urandom?"
+    patterns:
+      - pattern-either:
+          - pattern: random.random()
+          - pattern: random.randint(...)
+          - pattern: random.randrange(...)
+          - pattern: random.choice(...)
+          - pattern: random.choices(...)
+          - pattern: random.getrandbits(...)
+          - pattern: random.uniform(...)
+          - pattern: random.sample(...)
+
+  - id: waypoint-py-flask-debug
+    languages: [python]
+    severity: WARNING
+    message: >
+      Flask debug mode enabled — exposes the Werkzeug interactive debugger (PIN
+      bypass = RCE). Agent: can this code path run in a reachable/production
+      deployment?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "app.run(debug=True) — interactive debugger / RCE exposed in a reachable deploy?"
+    patterns:
+      - pattern-either:
+          - pattern: $APP.run(..., debug=True, ...)
+          - pattern: $APP.run(..., debug=True)
+
+  - id: waypoint-py-hardcoded-secret
+    languages: [python]
+    severity: ERROR
+    message: >
+      Secret-looking name assigned a string literal. Agent: is this a real
+      hardcoded credential (key/token/password) committed to source?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "secret-named variable assigned a string literal — hardcoded credential in source?"
+    patterns:
+      - pattern: $NAME = "..."
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: '(?i).*(password|passwd|secret|api_key|apikey|access_key|access_token|auth_token|client_secret|private_key|^token$|_token$).*'
+
+  - id: waypoint-py-xxe
+    languages: [python]
+    severity: WARNING
+    message: >
+      XML parsed without explicit entity hardening. Agent: can external/expanding
+      entities be supplied (XXE / billion-laughs entity expansion)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "XML parse of untrusted input without entity hardening — XXE or entity-expansion DoS?"
+    patterns:
+      - pattern-either:
+          - pattern: lxml.etree.parse(...)
+          - pattern: lxml.etree.fromstring(...)
+          - pattern: lxml.etree.XML(...)
+          - pattern: etree.parse(...)
+          - pattern: etree.fromstring(...)
+          - pattern: ET.parse(...)
+          - pattern: ET.fromstring(...)
+          - pattern: xml.etree.ElementTree.parse(...)
+          - pattern: xml.etree.ElementTree.fromstring(...)
+
+  - id: waypoint-py-archive-extractall
+    languages: [python]
+    severity: WARNING
+    message: >
+      Archive extractall() without per-member path validation. Agent: can a
+      crafted entry escape the destination dir via ../ or absolute path
+      (zip/tar slip)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "zip/tar extractall on untrusted archive — path traversal (zip/tar slip)?"
+    patterns:
+      - pattern-either:
+          - pattern: $Z.extractall(...)
+          - pattern: $Z.extractall()
+          - pattern: zipfile.ZipFile(...).extractall(...)
+          - pattern: tarfile.open(...).extractall(...)
+
+  - id: waypoint-py-os-popen-system
+    languages: [python]
+    severity: ERROR
+    message: >
+      Shell command via os.popen/os.system. Agent: is any part of the command
+      attacker-controlled (command injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "os.popen/os.system on a built command — command injection if input is untrusted?"
+    patterns:
+      - pattern-either:
+          - pattern: os.popen($X)
+          - pattern: os.popen($X, ...)
+          - pattern: os.system($X)
+      - pattern-not: os.popen("...")
+      - pattern-not: os.system("...")
+
+  - id: waypoint-py-django-raw-sql
+    languages: [python]
+    severity: WARNING
+    message: >
+      Django raw SQL escape hatch (.raw/.extra/RawSQL). Agent: is any fragment
+      built from user input rather than passed as bound params (SQL injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "Django .raw/.extra/RawSQL — unparametrized user input reaching the query (SQLi)?"
+    patterns:
+      - pattern-either:
+          - pattern: $M.objects.raw($Q, ...)
+          - pattern: $M.objects.raw($Q)
+          - pattern: $QS.raw($Q, ...)
+          - pattern: $QS.raw($Q)
+          - pattern: $QS.extra(...)
+          - pattern: RawSQL(...)
+      - pattern-not: $QS.raw("...")
+      - pattern-not: $M.objects.raw("...")

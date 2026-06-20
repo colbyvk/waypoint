@@ -1,0 +1,284 @@
+# ============================================================================
+# Waypoint configuration
+# ----------------------------------------------------------------------------
+# This single file controls which detectors run, how beacons are scored, when
+# they are suppressed, and how the agent layer is dispatched. It is meant to be
+# edited by the owning team WITHOUT touching any Python. Everything below has a
+# sensible default; change values, not code.
+#
+# Vocabulary (see WAYPOINT_BUILD_SPEC.md):
+#   beacon   = one SARIF result = "an agent should look here, and here is why"
+#   axis   = security | edge-case | concurrency | abuse | logic
+#   prior  = the detector's cheap severity guess, before any agent looks
+# ============================================================================
+
+# The languages this monorepo contains. Used by run_all.sh to decide which
+# tool groups to invoke. "react" is a TypeScript/JSX dialect (handled by the
+# typescript + react tooling).
+languages: [python, rust, typescript, react]
+
+# ----------------------------------------------------------------------------
+# Detectors: which tools run for each language group.
+# run_all.sh skips any tool that is not installed (it logs a SKIP line) so the
+# pipeline always degrades gracefully. Remove a tool here to disable it
+# permanently; comment it to disable temporarily.
+# ----------------------------------------------------------------------------
+detectors:
+  python:     [semgrep, bandit, ruff, mypy, pip-audit]
+  rust:       [clippy, cargo-audit, cargo-geiger, semgrep]
+  typescript: [semgrep, eslint, osv-scanner]
+  react:      [semgrep, eslint]          # react-hooks lint rides on eslint
+  cross:      [gitleaks, trivy, codeql]  # codeql runs when the CLI is installed (see §15.3)
+
+# CodeQL is the one true cross-file taint tracer but also the most expensive
+# piece (DB build can take tens of minutes). It is OFF by default; Semgrep-only
+# is a valid stance for Phases 1-3. Flip enabled:true and add 'codeql' to
+# detectors.cross to turn it on. (Decision left to owner — spec §15.3.)
+codeql:
+  enabled: true                                 # cross-file taint tracer (spec §5); needs the CodeQL CLI
+  languages: [python, javascript-typescript]    # Rust support is preview-grade; omit it
+  db_timeout_secs: 1800                          # cap per-language DB build + analyze
+  # CodeQL is its own OPT-IN lane (detectors/run_codeql.sh): run it with
+  # `bin/waypoint <dir> --codeql` or `--all`. It does NOT run on the default scan
+  # (a whole-program DB build is minutes+); see DECISIONS.md §15.3.
+
+# ----------------------------------------------------------------------------
+# SARIF severity level -> numeric severity prior (0..1).
+# SARIF only has four levels; this maps them onto the score's base term.
+# Tools that emit a CVSS "security-severity" property override this (see
+# merge_sarif.py) so dependency CVEs rank by their real score.
+# ----------------------------------------------------------------------------
+severity_prior_map:
+  error:   0.90
+  warning: 0.60
+  note:    0.30
+  none:    0.10
+
+# ----------------------------------------------------------------------------
+# Per-rule severity-prior overrides (applied before the level map above).
+# Some third-party rules are emitted at a high SARIF level but are LOW-VALUE as
+# triage beacons (asserts, style, perf). Left alone they inherit error→0.90 and
+# the boundary/multi-axis bonuses float them above genuine findings (observed:
+# S101/PERF reaching the top-12 on a real repo). Cap their prior so they stay
+# visible for recall but cannot outrank real security/logic issues. Keys are
+# fnmatch globs against the SARIF ruleId; do NOT broadly match "S*" (S608 = SQLi).
+# ----------------------------------------------------------------------------
+rule_prior_overrides:
+  "S101":   0.15   # ruff: assert used
+  "B101":   0.15   # bandit: assert used
+  "S102":   0.30   # ruff: exec used (real, but noisy in some codebases)
+  "B018":   0.20   # useless expression
+  "PERF*":  0.20   # perf smells (PERF401 manual-comprehension, etc.)
+  "E*":     0.20   # pycodestyle style (E401, E713, …)
+  "W*":     0.20   # pycodestyle warnings
+  "TRY*":   0.30   # try/except style (TRY300/301/400…)
+  "BLE001": 0.30   # blind except
+  "DTZ*":   0.30   # naive datetime
+  "B028":   0.30   # no explicit stacklevel in warnings
+  "F401":   0.20   # unused import
+  "F403":   0.20   # star import
+  "F405":   0.20   # may be undefined from star import
+  "F841":   0.30   # local variable assigned but never used
+
+# ----------------------------------------------------------------------------
+# Human-facing output cap. beacons/INDEX.md and the per-beacon .md files are
+# capped to the top_n highest-scored beacons (a 360-row index is unreadable).
+# The FULL ranked set always stays in reports/ranked.sarif — that's what the MCP
+# server / agent reads. Set top_n: 0 to emit every beacon.
+# ----------------------------------------------------------------------------
+emit:
+  top_n: 40
+
+# ----------------------------------------------------------------------------
+# Scoring (spec §7). score = prior
+#                           + multi_axis_bonus   (if beacon has >1 axis)
+#                           + centrality_weight * normalized_caller_count
+#                           + boundary_bonus     (if region reachable from a boundary)
+# Multi-axis overlap is the strongest cheap signal of a real problem; weight it
+# heavily. Keep this simple and explainable — do NOT make it ML.
+# ----------------------------------------------------------------------------
+scoring:
+  multi_axis_bonus: 0.50
+  centrality_weight: 0.30
+  boundary_bonus: 0.40
+  # Each additional axis beyond the second adds this much (capped). Lets a
+  # 3-axis beacon (e.g. security+concurrency+abuse) edge out a 2-axis one.
+  extra_axis_step: 0.10
+  extra_axis_cap: 0.20
+  # Precision calibration (prioritise/calibration.py): turn past agent verdicts
+  # into a per-rule score multiplier so chronically-dismissed rules sink and
+  # confirmed ones rise. Neutral (factor 1.0) until verdicts accumulate. Recompute
+  # with `bin/waypoint <dir> --calibrate`.
+  calibration:
+    enabled: true
+    min_factor: 0.4        # most a chronically-dismissed rule is down-weighted
+    max_factor: 1.3        # most a reliably-confirmed rule is boosted
+    prior_strength: 4      # Laplace pseudo-counts (higher = slower to leave neutral)
+
+# ----------------------------------------------------------------------------
+# Boundary reachability (the cheap approximation for "reachable from an
+# input/trust boundary"). A beacon gets boundary_bonus if its file path matches
+# one of path_globs OR its enclosing symbol matches one of symbol_patterns.
+# These are deliberately broad; the agent does the real reachability proof.
+# ----------------------------------------------------------------------------
+boundary:
+  path_globs:
+    - "**/handlers/**"
+    - "**/routes/**"
+    - "**/api/**"
+    - "**/controllers/**"
+    - "**/views.py"
+    - "**/views/**"
+    - "**/endpoints/**"
+    - "**/app.py"
+    - "**/main.py"
+    - "**/main.rs"
+    - "**/server.*"
+    - "**/pages/**"        # next.js style
+    - "**/*route*.*"
+  symbol_patterns:
+    - "handle_*"
+    - "*_handler"
+    - "*_view"
+    - "on_*"
+    - "route_*"
+    - "main"
+  # Decorators / call shapes that mark a request boundary, matched textually
+  # against the lines just above the region.
+  decorator_markers:
+    - "@app.route"
+    - "@app.get"
+    - "@app.post"
+    - "@router."
+    - "@blueprint."
+    - "app.get("
+    - "app.post("
+    - "router."
+
+# ----------------------------------------------------------------------------
+# Coverage / blind-spot map (prioritise/coverage.py — the LLM "dark zone").
+# Surfaces regions the static graph CANNOT verify and TIERS them by what we
+# OBSERVED (a sink the parsed body calls / a computed dispatch) — NOT a guessed
+# severity. Reachability is unresolved by definition; we never grade a region we
+# did not traverse. It also asserts the coverage PARTITION every run
+# (analyzed ∪ dark = all; see GUARANTEES.md). The code carries sensible defaults.
+#
+# Tiers (observed facts only): code-exec-adjacent > sink-adjacent > opaque > unparsed.
+# Only the first two are individually shown/ranked; opaque/unparsed are COUNTED.
+# Name-shape / boundary-path are weak HINTS that only break ties within a tier.
+# ----------------------------------------------------------------------------
+coverage:
+  top_k: 25                 # max OBSERVED-adjacent gaps shown in BLINDSPOTS.md / sent to --investigate
+  # sinks / input_shapes default to built-in lists in coverage.py; extend them here.
+  # sinks: [exec, eval, execute, loads, urlopen, ...]          # adds to DEFAULT_SINKS
+  # input_shapes: [handle, route, parse, webhook, ...]         # weak tie-breaker hints only
+
+# ----------------------------------------------------------------------------
+# Centrality: how caller count is approximated per the spec ("approximate
+# caller count from the call graph ... do not over-engineer this"). We count
+# how many times a region's enclosing symbol name appears elsewhere in the
+# repo as a call site. Files matching exclude_globs are not scanned for callers.
+# ----------------------------------------------------------------------------
+centrality:
+  exclude_globs:
+    - "**/.venv/**"
+    - "**/node_modules/**"
+    - "**/target/**"
+    - "**/.git/**"
+    - "**/reports/**"
+    - "**/tests/**"
+    - "**/test_*"
+
+# ----------------------------------------------------------------------------
+# Suppression & memory (spec §9). Without this the team abandons the tool.
+# ----------------------------------------------------------------------------
+suppression:
+  store: suppression/store.json          # content-hash -> verdict + expiry
+  allowlist: suppression/allowlist.yaml  # explicit accepted patterns w/ justification
+  default_expiry_days: 90                # a dismissed region is re-examined after this
+  calibration_store: suppression/calibration.json  # per-rule precision (bin/waypoint --calibrate)
+
+# ----------------------------------------------------------------------------
+# Policy gate (the "teeth"). `prioritise/gate.py` exits non-zero when active
+# beacons violate this policy, so CI can FAIL a PR or block a deploy on the
+# findings that matter — instead of findings being merely advisory. Opt-in:
+# disabled by default; `bin/waypoint <dir> --gate` forces it on.
+#
+# A beacon is a VIOLATION when its axis is in fail_on_axes AND it is serious
+# enough (severity_prior >= min_severity_prior OR its SARIF level is in
+# fail_on_levels) AND (if only_confirmed) an agent verdict confirmed it. The run
+# fails when the violation count exceeds max_violations.
+# ----------------------------------------------------------------------------
+gate:
+  enabled: false
+  fail_on_axes: [security, logic] # blocker axes ([] = any axis counts)
+  min_severity_prior: 0.9         # only beacons at/above this prior count
+  fail_on_levels: [error]         # ...or beacons at these SARIF levels
+  only_confirmed: false           # require an agent 'confirm' verdict (reports/verdicts.json)
+  max_violations: 0               # fail when violations exceed this count
+
+# ----------------------------------------------------------------------------
+# Software-LOGIC testing lane (detectors/run_logic.sh). Dynamic evidence of
+# logic bugs — surviving mutants, observed data races, fuzz crashes — ingested
+# as `logic` beacons. SLOW (mutation re-runs the suite per mutant; fuzzing runs
+# for minutes+), so it is OPT-IN and belongs in a nightly lane, not per-PR.
+# `bin/waypoint <dir> --logic` forces it on.
+# ----------------------------------------------------------------------------
+logic:
+  enabled: false
+  mutants: true                   # run cargo-mutants on Rust crates (if installed)
+  mutants_timeout_secs: 1200
+  # Property-based testing — assert INVARIANTS over generated inputs; a failure
+  # shrinks to a MINIMAL counterexample that rides on the beacon as its
+  # reproducing input. Finds correctness bugs with no spec and no existing
+  # tests. Per language: Hypothesis (Python), proptest/quickcheck (Rust),
+  # fast-check (TypeScript/React).
+  property: true
+  property_generate: true         # Python: auto-write property tests with Hypothesis ghostwriter when none exist
+  property_timeout_secs: 300
+  # Differential / metamorphic relations — the strongest spec-free properties:
+  # two execution paths that must agree (roundtrip, idempotence, equivalence to a
+  # reference impl, commutativity). Each entry is a Hypothesis `ghostwriter` spec;
+  # the lane generates + runs the test, and a falsified relation is labelled with
+  # its kind on the beacon. Examples:
+  #   - "--roundtrip mymod.encode mymod.decode"
+  #   - "--idempotent mymod.normalize"
+  #   - "--equivalent mymod.fast_impl mymod.reference_impl"
+  #   - "--binary-op mymod.merge"
+  property_relations: []
+  # Fuzzing — coverage-guided input generation that drives the code into
+  # crashes/panics/hangs. Per language: atheris (Python), cargo-fuzz (Rust),
+  # jazzer.js (TypeScript/JS). A crash carries the offending input.
+  fuzz: true
+  fuzz_secs: 60                   # per-target fuzzing budget (seconds)
+  race_reports: []                # globs of race-detector logs to ingest (go -race / TSan)
+  fuzz_reports: []                # globs of libFuzzer / cargo-fuzz / atheris / jazzer crash logs to ingest
+  property_reports: []            # globs of saved property-test logs to ingest (Hypothesis / proptest / fast-check)
+
+# ----------------------------------------------------------------------------
+# Agent dispatch (spec §8). The cheap deterministic pass produces beacons for
+# free on every run; the agent layer sweeps the top-N on a cadence to control
+# cost.
+#   backend:
+#     dry-run        -> write verifier prompts to reports/dispatch/, call no LLM
+#                       (fully deterministic; the default so CI never spends $$)
+#     claude-cli     -> shell out to the `claude` CLI in headless mode
+#     anthropic-api  -> call the Anthropic API (needs ANTHROPIC_API_KEY)
+#     raptor         -> hand the merged beacons to a RAPTOR harness (see dispatch/raptor/)
+# ----------------------------------------------------------------------------
+dispatch:
+  backend: dry-run
+  budget_top_n: 25                       # how many top-ranked beacons to dispatch per run
+  model: claude-opus-4-8                 # used by claude-cli / anthropic-api backends
+  context_lines: 8                       # padding around the region in the envelope
+  verdicts: reports/verdicts.json        # where confirm/dismiss/escalate land
+
+# ----------------------------------------------------------------------------
+# Tag map: for detectors that do NOT carry Waypoint axes natively (everything
+# except our custom Semgrep rules), this maps a (tool, rule-id pattern) to axes
+# and a templated agent hypothesis. merge_sarif.py applies it. Patterns are
+# fnmatch-style and matched against the rule id (case-insensitive). First match
+# wins; if nothing matches, the beacon still flows through tagged with a single
+# inferred axis from its rule text (see merge_sarif._infer_axis).
+# ----------------------------------------------------------------------------
+tag_map: tag_map.yaml

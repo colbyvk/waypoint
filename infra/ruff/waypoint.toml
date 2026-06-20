@@ -1,0 +1,27 @@
+# Waypoint-owned ruff configuration.
+#
+# Passed via `ruff check --config <this file>` so the SCANNED project's own ruff
+# settings are never read (consistent with infra/mypy/waypoint.cfg — we control
+# exactly which rules run, and the target cannot widen/narrow our selection).
+#
+# Selection is recall-biased — beacons are deduped, ranked, and agent-verified
+# downstream, so we prefer to over-detect here:
+#   E,F  correctness · B bugbear · S flake8-bandit (security) · ASYNC concurrency
+#   BLE  blind-except · DTZ naive-datetime · PERF amplification · TRY except-flow
+# E501 (line length) and the chatty TRY003 are ignored. Overlap with Bandit is
+# de-duplicated downstream in merge_sarif.
+target-version = "py38"
+
+[lint]
+select = ["E", "F", "B", "S", "ASYNC", "BLE", "DTZ", "PERF", "TRY"]
+ignore = ["E501", "TRY003"]
+
+# Test files trip the security/bug families BY DESIGN — asserts (S101), fixture
+# credentials (S105-S107), seeded randomness (S311), `assert False` (B011),
+# bare expressions (B018). These are not production-safety beacons, so silence
+# them in test files only; the same rules stay sharp on shipping code.
+[lint.per-file-ignores]
+"**/test_*.py"     = ["S101", "S105", "S106", "S107", "S311", "B011", "B018"]
+"**/*_test.py"     = ["S101", "S105", "S106", "S107", "S311", "B011", "B018"]
+"**/tests/**/*.py" = ["S101", "S105", "S106", "S107", "S311", "B011", "B018"]
+"**/conftest.py"   = ["S101", "S105", "S106", "S107", "S311", "B011", "B018"]

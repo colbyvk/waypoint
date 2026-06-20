@@ -1,0 +1,45 @@
+# Waypoint concurrency-proxy rules — React (hooks/effects; spec §6.3)
+# React is a TypeScript/JSX dialect; semgrep `typescript` parses .tsx. These
+# rules target React-hook shapes specifically (general TS concurrency lives in
+# infra/typescript/concurrency/).
+rules:
+  # highest-value: async work in an effect with no cleanup -> set-state after
+  # unmount / stale-closure race.
+  - id: waypoint-react-effect-async-no-cleanup
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      useEffect runs async work (fetch/await/.then or an async body) with no
+      cleanup function. Agent: confirm or deny a set-state-after-unmount or
+      stale-closure race.
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, edge-case]
+      waypoint_hypothesis: "async effect without cleanup — unmount/stale-closure race?"
+    patterns:
+      - pattern-either:
+          - pattern: useEffect(() => { ... }, [...]);
+          - pattern: useEffect(async () => { ... }, [...]);
+      - pattern-not: useEffect(() => { ... return () => { ... }; }, [...]);
+      - pattern-not: useEffect(() => { ... return $CLEAN; }, [...]);
+      - pattern-regex: (fetch\(|\.then\(|\bawait\b|async)
+
+  # useState setter invoked from inside an async callback -> stale closure
+  - id: waypoint-react-setstate-in-async
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A state setter is called inside an async callback. Agent: after the await,
+      is this writing stale state or racing a newer render?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, edge-case]
+      waypoint_hypothesis: "setState inside async callback — stale-closure / out-of-order update race?"
+    patterns:
+      - pattern-either:
+          - pattern-inside: "async (...) => { ... }"
+          - pattern-inside: "async function $F(...) { ... }"
+      - pattern: $SETTER(...)
+      - metavariable-regex:
+          metavariable: $SETTER
+          regex: "^set[A-Z]"

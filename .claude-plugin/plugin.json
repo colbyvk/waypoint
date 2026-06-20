@@ -1,0 +1,13 @@
+{
+  "name": "waypoint",
+  "version": "0.1.0",
+  "description": "Read-only code-triage for AI-generated code: a cheap deterministic scan drops ranked beacons + a dark-zone map of what it COULDN'T verify; your agent verifies the top ones and reports in plain English. Python · Rust · TypeScript · React.",
+  "keywords": ["security", "code-review", "static-analysis", "ai-generated-code", "triage", "sarif", "dark-zone"],
+  "license": "Apache-2.0",
+  "mcpServers": {
+    "waypoint": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/waypoint-mcp",
+      "args": []
+    }
+  }
+}

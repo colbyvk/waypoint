@@ -1,0 +1,41 @@
+# Waypoint hardening rules — TypeScript abuse (proxy detectors; optimize for recall).
+# New shapes only; does NOT duplicate redos already in typescript.yaml.
+rules:
+  - id: waypoint-ts-unbounded-loop
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Infinite loop (while(true) / for(;;)). Agent: is the exit condition driven by
+      input or an external resource such that a crafted/absent input keeps the loop
+      spinning (DoS / hang)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "while(true)/for(;;) — can input prevent the break and hang the loop (DoS)?"
+    patterns:
+      - pattern-either:
+          - pattern: "while (true) { ... }"
+          - pattern: "while (1) { ... }"
+          - pattern: "for (;;) { ... }"
+
+  - id: waypoint-ts-unbounded-allocation
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Array preallocated with a non-literal length. Agent: is the size derived from
+      user input, allowing an attacker to force a huge allocation (memory exhaustion /
+      DoS)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "new Array(n) with non-literal n — attacker-controlled size forces giant allocation?"
+    patterns:
+      - pattern-either:
+          - pattern: new Array($N)
+          - pattern: Array($N)
+          - pattern: Buffer.alloc($N)
+          - pattern: Buffer.allocUnsafe($N)
+          - pattern: "new Array($N).fill(...)"
+      - metavariable-regex:
+          metavariable: $N
+          regex: '^(?!\d+$).+'

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# ============================================================================
+# wipe-beacons — clear the dropped beacons in beacons/.
+#
+# Beacons are run output (Markdown markers). They are regenerated on the next
+# `waypoint <dir>` run; this just clears the directory between runs.
+#
+#   bin/wipe-beacons
+# ============================================================================
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BEACONS="$ROOT/beacons"
+
+n=$(find "$BEACONS" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+find "$BEACONS" -name '*.md' -delete 2>/dev/null || true
+mkdir -p "$BEACONS"
+touch "$BEACONS/.gitkeep"
+echo "[wipe-beacons] removed $n beacon .md file(s) from beacons/"

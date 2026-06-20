@@ -1,0 +1,6 @@
+INFO: Running with entropic power schedule (0xFF, 100).
+==12345== ERROR: libFuzzer: deadly signal
+thread '<unnamed>' panicked at 'byte index 5 is out of bounds', src/parse.rs:88:13
+    #0 0x5555 in core::panicking::panic_bounds_check
+    #7 0x9999 in rust_service::parse::decode src/parse.rs:88:13
+SUMMARY: libFuzzer: deadly signal

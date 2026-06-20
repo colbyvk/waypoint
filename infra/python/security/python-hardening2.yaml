@@ -1,0 +1,106 @@
+# Waypoint hardening2 rules — Python / security (proxy detectors; recall-biased).
+# NEW shapes only. Does NOT duplicate python.yaml or python-hardening.yaml
+# (eval/exec, subprocess, TLS verify=False, path, SSRF nonliteral-url, SSTI,
+# XXE, pickle, yaml, weak-hash, hardcoded-secret, redos, idor are already there).
+rules:
+  - id: waypoint-py-insecure-tempfile-mktemp
+    languages: [python]
+    severity: ERROR
+    message: >
+      tempfile.mktemp() only returns a name; the file is created later, leaving a
+      TOCTOU window where an attacker can pre-create or symlink the path. Agent:
+      is this path opened/written afterward (insecure temp file race)? Prefer
+      mkstemp/NamedTemporaryFile.
+    metadata:
+      category: security
+      waypoint_axes: [security, edge-case]
+      waypoint_hypothesis: "tempfile.mktemp() — predictable temp path with a create-time race (symlink/TOCTOU)?"
+    patterns:
+      - pattern-either:
+          - pattern: tempfile.mktemp(...)
+          - pattern: tempfile.mktemp()
+          - pattern: mktemp(...)
+
+  - id: waypoint-py-django-csrf-exempt
+    languages: [python]
+    severity: WARNING
+    message: >
+      Django csrf_exempt disables CSRF protection for this view. Agent: does this
+      view perform a state-changing action that an attacker could trigger
+      cross-site (CSRF)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "csrf_exempt on a state-changing view — cross-site request forgery?"
+    patterns:
+      - pattern-either:
+          - pattern: csrf_exempt
+          - pattern: csrf_exempt(...)
+          - pattern: "@csrf_exempt"
+
+  - id: waypoint-py-flask-cors-wildcard
+    languages: [python]
+    severity: WARNING
+    message: >
+      Flask-CORS configured with a wildcard origin ("*") allows any site to make
+      credentialed cross-origin requests. Agent: are authenticated/credentialed
+      endpoints exposed to arbitrary origins (CORS misconfiguration)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: 'Flask-CORS origins="*" — any origin can call authenticated endpoints (CORS bypass)?'
+    patterns:
+      - pattern-either:
+          - pattern: 'CORS($APP, ..., origins="*", ...)'
+          - pattern: 'CORS($APP, ..., origins="*")'
+          - pattern: 'CORS($APP, origins="*")'
+          - pattern: 'CORS($APP, ..., resources={..., $K: {..., "origins": "*", ...}, ...}, ...)'
+          - pattern: 'CORS($APP, resources={..., $K: {..., "origins": "*", ...}, ...})'
+          - pattern: 'CORS($APP, ..., resources={$K: {"origins": "*"}}, ...)'
+          - pattern: 'CORS($APP, resources={$K: {"origins": "*"}})'
+
+  - id: waypoint-py-jwt-verify-disabled
+    languages: [python]
+    severity: ERROR
+    message: >
+      JWT decoded with signature verification disabled. Agent: is this token
+      trusted for authentication/authorization without a real signature check
+      (auth bypass / token forgery)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "jwt.decode with verify=False / verify_signature False — signature not enforced (auth bypass)?"
+    patterns:
+      - pattern-either:
+          - pattern: jwt.decode(..., verify=False, ...)
+          - pattern: jwt.decode(..., verify=False)
+          - pattern: 'jwt.decode(..., options={..., "verify_signature": False, ...}, ...)'
+          - pattern: 'jwt.decode(..., options={..., "verify_signature": False, ...})'
+          - pattern: 'jwt.decode(..., options={"verify_signature": False}, ...)'
+          - pattern: 'jwt.decode(..., options={"verify_signature": False})'
+          - pattern: '$JWT.decode(..., options={"verify_signature": False})'
+
+  - id: waypoint-py-ldap-filter-fstring
+    languages: [python]
+    severity: ERROR
+    message: >
+      LDAP search filter built by string interpolation (f-string/%/format) and
+      passed to search. Agent: is any interpolated value attacker-controlled and
+      unescaped (LDAP injection)? Use ldap.filter.escape_filter_chars.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "LDAP search() filter built via f-string/format — LDAP injection from unescaped input?"
+    patterns:
+      - pattern-either:
+          - pattern: $C.search($BASE, $SCOPE, f"...{$X}...", ...)
+          - pattern: $C.search($BASE, $SCOPE, f"...{$X}...")
+          - pattern: $C.search(..., filterstr=f"...{$X}...", ...)
+          - pattern: $C.search(..., filterstr=f"...{$X}...")
+          - pattern: $C.search_s($BASE, $SCOPE, f"...{$X}...", ...)
+          - pattern: $C.search_s($BASE, $SCOPE, f"...{$X}...")
+          - pattern: $C.search_ext_s($BASE, $SCOPE, f"...{$X}...", ...)
+          - pattern: $C.search($BASE, $SCOPE, "..." % $X, ...)
+          - pattern: $C.search($BASE, $SCOPE, "..." % $X)
+          - pattern: $C.search($BASE, $SCOPE, "...".format(...), ...)
+          - pattern: $C.search($BASE, $SCOPE, "...".format(...))

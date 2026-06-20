@@ -1,0 +1,222 @@
+# Waypoint TAINT rules — Python (dataflow, not shape).
+# Semgrep `mode: taint`: a beacon fires only when UNTRUSTED INPUT actually flows
+# into a dangerous sink — catching real injections a sink-shape rule misses, and
+# staying quiet when the value is parametrized/constant (the taint never reaches
+# the sink). Intraprocedural (Semgrep CE). Sources are inlined per rule (Semgrep
+# has no rule-level includes).
+rules:
+  - id: waypoint-py-taint-sql
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into a SQL query string. Agent: confirm the source is
+      attacker-controlled (SQL injection along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "tainted input reaches a SQL query unsanitized — injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.args[...]
+          - pattern: request.form.get(...)
+          - pattern: request.values.get(...)
+          - pattern: request.json
+          - pattern: request.data
+          - pattern: request.cookies.get(...)
+          - pattern: request.headers.get(...)
+          - pattern: request.GET.get(...)
+          - pattern: request.POST.get(...)
+          - pattern: input(...)
+          - pattern: sys.argv[...]
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $C.execute($Q)
+              - pattern: $C.executemany($Q)
+          - focus-metavariable: $Q
+
+  - id: waypoint-py-taint-command
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into a shell/command execution. Agent: confirm the
+      source is attacker-controlled (command injection along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches a command/shell sink — injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.args[...]
+          - pattern: request.form.get(...)
+          - pattern: request.values.get(...)
+          - pattern: request.json
+          - pattern: request.data
+          - pattern: request.cookies.get(...)
+          - pattern: request.headers.get(...)
+          - pattern: request.GET.get(...)
+          - pattern: request.POST.get(...)
+          - pattern: input(...)
+          - pattern: sys.argv[...]
+    pattern-sinks:
+      - pattern-either:
+          - pattern: os.system(...)
+          - pattern: os.popen(...)
+          - pattern: subprocess.run(...)
+          - pattern: subprocess.call(...)
+          - pattern: subprocess.Popen(...)
+          - pattern: subprocess.check_output(...)
+
+  - id: waypoint-py-taint-path
+    languages: [python]
+    severity: WARNING
+    mode: taint
+    message: >
+      Untrusted input flows into a filesystem path. Agent: confirm a user value can
+      escape the intended directory (path traversal along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches a file path sink — path traversal along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.args[...]
+          - pattern: request.form.get(...)
+          - pattern: request.values.get(...)
+          - pattern: request.json
+          - pattern: request.cookies.get(...)
+          - pattern: request.headers.get(...)
+          - pattern: request.GET.get(...)
+          - pattern: request.POST.get(...)
+          - pattern: input(...)
+          - pattern: sys.argv[...]
+    pattern-sinks:
+      - pattern-either:
+          - pattern: open(...)
+          - pattern: os.remove(...)
+          - pattern: os.path.join(...)
+          - pattern: send_file(...)
+
+  - id: waypoint-py-taint-ssrf
+    languages: [python]
+    severity: WARNING
+    mode: taint
+    message: >
+      Untrusted input flows into an outbound HTTP request URL. Agent: confirm the
+      destination is user-controlled (SSRF along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches an HTTP-client URL — SSRF along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.args[...]
+          - pattern: request.form.get(...)
+          - pattern: request.values.get(...)
+          - pattern: request.json
+          - pattern: request.cookies.get(...)
+          - pattern: request.headers.get(...)
+          - pattern: request.GET.get(...)
+          - pattern: request.POST.get(...)
+          - pattern: input(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: requests.get(...)
+          - pattern: requests.post(...)
+          - pattern: requests.request(...)
+          - pattern: urllib.request.urlopen(...)
+          - pattern: httpx.get(...)
+          - pattern: httpx.post(...)
+
+  - id: waypoint-py-taint-code
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into dynamic code execution (eval/exec). Agent: confirm
+      the source is attacker-controlled (code injection along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches eval/exec — code injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.args[...]
+          - pattern: request.form.get(...)
+          - pattern: request.values.get(...)
+          - pattern: request.json
+          - pattern: request.cookies.get(...)
+          - pattern: request.headers.get(...)
+          - pattern: request.GET.get(...)
+          - pattern: request.POST.get(...)
+          - pattern: input(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+
+  - id: waypoint-py-taint-deserialize
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into unsafe deserialization. Agent: confirm the source
+      is attacker-controlled (object-injection / RCE along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches pickle/yaml/marshal load — deserialization RCE along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.form.get(...)
+          - pattern: request.values.get(...)
+          - pattern: request.json
+          - pattern: request.data
+          - pattern: request.cookies.get(...)
+          - pattern: request.headers.get(...)
+          - pattern: request.GET.get(...)
+          - pattern: request.POST.get(...)
+          - pattern: input(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: pickle.loads(...)
+          - pattern: pickle.load(...)
+          - pattern: marshal.loads(...)
+          - pattern: yaml.load(...)
+          - pattern: yaml.unsafe_load(...)
+
+  - id: waypoint-py-taint-ssti
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into a server-side template render. Agent: confirm the
+      source is attacker-controlled (SSTI along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches a template render — server-side template injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.form.get(...)
+          - pattern: request.values.get(...)
+          - pattern: request.json
+          - pattern: request.data
+          - pattern: request.cookies.get(...)
+          - pattern: request.headers.get(...)
+          - pattern: request.GET.get(...)
+          - pattern: request.POST.get(...)
+          - pattern: input(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: render_template_string(...)
+          - pattern: Template(...).render(...)

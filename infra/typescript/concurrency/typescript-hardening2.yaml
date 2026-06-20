@@ -1,0 +1,47 @@
+# Waypoint hardening2 rules — TypeScript / concurrency (proxy detectors; recall-biased).
+# NEW shapes only; does NOT duplicate promise-all-race (typescript.yaml) or
+# timer-leak / shared-mutable-async (typescript-hardening.yaml).
+rules:
+  - id: waypoint-ts-promise-executor-no-reject
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A new Promise(...) executor uses resolve but never references reject, so a
+      failure on the async path can leave the promise pending forever (or throw
+      synchronously). Agent: is every error path inside the executor surfaced via
+      reject?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, edge-case]
+      waypoint_hypothesis: "new Promise executor with resolve but no reject — error path leaves promise hung?"
+    patterns:
+      - pattern-either:
+          - pattern: "new Promise(($RESOLVE) => { ... })"
+          - pattern: "new Promise(function ($RESOLVE) { ... })"
+      - pattern-not: "new Promise(($RESOLVE, $REJECT) => { ... })"
+      - pattern-not: "new Promise(function ($RESOLVE, $REJECT) { ... })"
+
+  - id: waypoint-ts-shared-counter-multi-async
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A module-level counter/accumulator is incremented or decremented inside an
+      async function. Agent: if two async paths run concurrently around an await,
+      can read-modify-write interleave and lose updates (data race)?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "module-level counter ++/-- inside async fn — lost-update race across concurrent invocations?"
+    patterns:
+      - pattern-either:
+          - pattern-inside: "async function $F(...) { ... }"
+          - pattern-inside: "async ($P) => { ... }"
+          - pattern-inside: "$OBJ = async ($P) => { ... }"
+          - pattern-inside: "async $M(...) { ... }"
+      - pattern-either:
+          - pattern: $C++
+          - pattern: $C--
+          - pattern: $C += $N
+          - pattern: $C -= $N
+      - pattern-not: this.$F += $N
+      - pattern-not: this.$F -= $N

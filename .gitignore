@@ -1,0 +1,30 @@
+# Python venv + caches
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+
+# Run outputs — regenerated every run. The suppression store + allowlist are
+# tracked (they are memory); the reports/ dir is not.
+reports/*
+!reports/.gitkeep
+
+# Dropped beacons — regenerated every run; wipe with bin/wipe-beacons
+beacons/*
+!beacons/.gitkeep
+
+# Toolchain build dirs
+node_modules/
+target/
+
+# CodeQL bundle — a ~1.3 GB vendored toolchain installed by detectors/install_codeql.sh.
+# Never commit it; re-install with that script.
+.codeql/
+
+# Generated per-rule precision cache. The suppression STORE + allowlist are tracked
+# (they are the team's memory); this one is derived from verdicts and machine-local.
+suppression/calibration.json
+
+.DS_Store
+.pytest_cache/

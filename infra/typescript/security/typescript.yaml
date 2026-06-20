@@ -1,0 +1,34 @@
+# Waypoint house security rules — TypeScript (language-general; spec §3.2.1)
+rules:
+  - id: waypoint-ts-eval
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Dynamic eval / new Function. Agent: can attacker-controlled input reach
+      this (code injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "eval/new Function on dynamic input — code injection?"
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+
+  - id: waypoint-ts-child-process
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      child_process exec with an interpolated argument. Agent: is the command
+      string attacker-controlled (command injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "child_process exec with interpolation — command injection?"
+    patterns:
+      - pattern-either:
+          - pattern: child_process.exec(...)
+          - pattern: child_process.execSync(...)
+          - pattern: cp.exec(...)
+          - pattern: exec(`...`)
+          - pattern: execSync(`...`)

@@ -1,0 +1,13 @@
+# GitHub code-scanning (CodeQL) config for THIS repository.
+#
+# samples/ is intentionally-vulnerable test data for Waypoint's own detectors, so
+# exclude it from code scanning — otherwise the fixtures show up as real findings
+# in the Security tab.
+#
+# Wire it up: Settings → Code security → CodeQL → (Advanced / config file), or
+# `config-file: ./.github/codeql/codeql-config.yml` in a github/codeql-action step.
+name: "Waypoint CodeQL config"
+
+paths-ignore:
+  - "samples/**"
+  - "**/samples/**"

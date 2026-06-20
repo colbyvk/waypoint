@@ -1,0 +1,18 @@
+=================================== FAILURES ===================================
+______________________________ test_roundtrip _________________________________
+
+    @given(data=st.binary())
+>   def test_roundtrip(data):
+        assert decode(encode(data)) == data
+
+codec/serializer.py:22: in encode
+    return _strip_nulls(base64.b64encode(data)).decode()
+E   AssertionError: assert b'' == b'\x00'
+
+----------------------------- Captured stdout call -----------------------------
+Falsifying example: test_roundtrip(
+    data=b'\x00',
+)
+=========================== short test summary info ============================
+FAILED test_roundtrip.py::test_roundtrip - AssertionError: assert b'' == b'\x00'
+============================== 1 failed in 0.30s ===============================

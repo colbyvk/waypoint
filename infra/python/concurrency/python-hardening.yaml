@@ -1,0 +1,54 @@
+# Waypoint hardening rules — Python / concurrency
+# NEW proxy detectors. These do NOT duplicate python.yaml (async-shared-mutable,
+# concurrency-primitive markers already covered there).
+rules:
+  - id: waypoint-py-blocking-call-in-async
+    languages: [python]
+    severity: WARNING
+    message: >
+      Synchronous blocking call inside an async function stalls the entire event
+      loop until it returns. Agent: does this block the loop (use an async client
+      or run_in_executor)?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "blocking call (time.sleep / requests.*) inside async def — event loop stalled?"
+      references:
+        - https://docs.python.org/3/library/asyncio-dev.html#running-blocking-code
+    patterns:
+      - pattern-inside: |
+          async def $FN(...):
+            ...
+      - pattern-either:
+          - pattern: time.sleep(...)
+          - pattern: requests.get(...)
+          - pattern: requests.post(...)
+          - pattern: requests.put(...)
+          - pattern: requests.delete(...)
+          - pattern: requests.head(...)
+          - pattern: requests.patch(...)
+          - pattern: requests.request(...)
+
+  - id: waypoint-py-fire-and-forget-task
+    languages: [python]
+    severity: INFO
+    message: >
+      asyncio.create_task() whose handle is neither awaited nor stored: the task
+      can be garbage-collected mid-flight and its exceptions are swallowed. Agent:
+      is this fire-and-forget result/lifetime actually intended?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "create_task() result discarded — task GC'd early or exceptions lost?"
+      references:
+        - https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+    patterns:
+      - pattern: asyncio.create_task(...)
+      - pattern-not-inside: $T = asyncio.create_task(...)
+      - pattern-not-inside: $T += asyncio.create_task(...)
+      - pattern-not-inside: await asyncio.create_task(...)
+      - pattern-not-inside: return asyncio.create_task(...)
+      - pattern-not-inside: $X.append(asyncio.create_task(...))
+      - pattern-not-inside: $X.add(asyncio.create_task(...))
+      - pattern-not-inside: "[asyncio.create_task(...) for ... in ...]"
+      - pattern-not-inside: "(asyncio.create_task(...) for ... in ...)"

@@ -1,0 +1,162 @@
+# Waypoint TAINT rules — TypeScript (dataflow, not shape). `mode: taint`: fires
+# only when untrusted input (req.query/body/params, location.*, process.argv …)
+# flows into a sink. `languages: [typescript]` parses .ts AND .tsx (React).
+# Sources inlined per rule (Semgrep has no rule-level includes).
+rules:
+  - id: waypoint-ts-taint-xss
+    languages: [typescript]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into an HTML sink. Agent: confirm it reaches the DOM
+      unescaped (DOM XSS along this flow).
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches an HTML sink unescaped — DOM XSS along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: $R.query
+          - pattern: $R.body
+          - pattern: $R.params
+          - pattern: $R.headers
+          - pattern: $R.cookies
+          - pattern: location.search
+          - pattern: location.hash
+          - pattern: location.href
+          - pattern: document.URL
+          - pattern: document.referrer
+          - pattern: window.name
+          - pattern: process.argv
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $EL.innerHTML = $X
+              - pattern: $EL.outerHTML = $X
+              - pattern: $EL.insertAdjacentHTML(..., $X)
+          - focus-metavariable: $X
+      - pattern: document.write(...)
+
+  - id: waypoint-ts-taint-command
+    languages: [typescript]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into a child_process call. Agent: confirm command
+      injection along this flow.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches a child_process sink — command injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: $R.query
+          - pattern: $R.body
+          - pattern: $R.params
+          - pattern: $R.headers
+          - pattern: $R.cookies
+          - pattern: location.search
+          - pattern: location.hash
+          - pattern: location.href
+          - pattern: document.URL
+          - pattern: document.referrer
+          - pattern: window.name
+          - pattern: process.argv
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $CP.exec(...)
+          - pattern: $CP.execSync(...)
+          - pattern: $CP.spawn(...)
+          - pattern: exec(...)
+          - pattern: execSync(...)
+
+  - id: waypoint-ts-taint-sql
+    languages: [typescript]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input flows into a SQL query string. Agent: confirm injection along
+      this flow.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "tainted input reaches a SQL query string — injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: $R.query
+          - pattern: $R.body
+          - pattern: $R.params
+          - pattern: $R.headers
+          - pattern: $R.cookies
+          - pattern: location.search
+          - pattern: location.href
+          - pattern: process.argv
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.query($Q)
+              - pattern: $DB.execute($Q)
+              - pattern: $DB.raw($Q)
+          - focus-metavariable: $Q
+
+  - id: waypoint-ts-taint-ssrf
+    languages: [typescript]
+    severity: WARNING
+    mode: taint
+    message: >
+      Untrusted input flows into an outbound request URL. Agent: confirm SSRF along
+      this flow.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches an HTTP-client URL — SSRF along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: $R.query
+          - pattern: $R.body
+          - pattern: $R.params
+          - pattern: $R.headers
+          - pattern: $R.cookies
+          - pattern: location.search
+          - pattern: location.href
+          - pattern: document.referrer
+          - pattern: process.argv
+    pattern-sinks:
+      - pattern-either:
+          - pattern: fetch(...)
+          - pattern: axios.get(...)
+          - pattern: axios.post(...)
+          - pattern: axios.request(...)
+          - pattern: http.get(...)
+          - pattern: https.get(...)
+          - pattern: got(...)
+
+  - id: waypoint-ts-taint-redirect
+    languages: [typescript]
+    severity: WARNING
+    mode: taint
+    message: >
+      Untrusted input flows into a redirect/navigation target. Agent: confirm open
+      redirect along this flow.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted input reaches a redirect/location target — open redirect along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: $R.query
+          - pattern: $R.body
+          - pattern: $R.params
+          - pattern: $R.headers
+          - pattern: $R.cookies
+          - pattern: location.search
+          - pattern: location.href
+          - pattern: document.referrer
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $RES.redirect($X)
+              - pattern: window.location = $X
+              - pattern: location.href = $X
+              - pattern: location.assign($X)
+          - focus-metavariable: $X

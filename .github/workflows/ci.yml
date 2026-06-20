@@ -1,0 +1,56 @@
+# ============================================================================
+# Waypoint CI — proves the tool installs and works FROM SCRATCH on a clean
+# machine (the "works on my Mac isn't shippable" guard). On every push/PR, on
+# fresh Ubuntu *and* macOS runners across two Python versions, it:
+#   cold install → doctor (assert core) → unit tests → self-scan → MCP handshake.
+# This is the green badge that says "a stranger can clone this and it runs."
+# (waypoint.yml is the separate example of USING Waypoint on your own repo.)
+# ============================================================================
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cold-install:
+    name: cold install + self-test (${{ matrix.os }} · py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: macos-latest,  python: "3.12" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Cold install (core scanners + the Waypoint-owned ESLint lane)
+        run: ./detectors/install.sh --eslint
+
+      - name: Doctor — the CORE must be present (fails loudly otherwise)
+        run: |
+          ./bin/waypoint --doctor
+          ./bin/waypoint --doctor | grep -q "ready to scan"
+
+      - name: Unit tests (no external scanner required)
+        run: ./bin/waypoint --test
+
+      - name: Self-scan — a cold clone must produce beacons + a dark-zone map
+        run: |
+          ./bin/waypoint samples/monorepo
+          test -s beacons/INDEX.md       || { echo "no INDEX.md"; exit 1; }
+          test -s beacons/BLINDSPOTS.md  || { echo "no BLINDSPOTS.md"; exit 1; }
+          test -s reports/ranked.sarif   || { echo "no ranked.sarif"; exit 1; }
+
+      - name: MCP server — advertises its tools over stdio
+        run: .venv/bin/python integrations/mcp/_handshake_check.py

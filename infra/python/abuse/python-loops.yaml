@@ -1,0 +1,20 @@
+# Waypoint loop / compute-DoS rules — Python
+rules:
+  - id: waypoint-py-infinite-loop
+    languages: [python]
+    severity: INFO
+    message: >
+      Infinite loop (`while True` / `while 1`). Agent: is there a reachable,
+      bounded exit, or can an input keep it spinning (dead loop / compute sink)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "infinite loop — reachable bounded exit, or a dead loop / busy-spin compute sink?"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              while True:
+                  ...
+          - pattern: |
+              while 1:
+                  ...

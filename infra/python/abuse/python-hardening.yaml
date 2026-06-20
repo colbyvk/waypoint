@@ -1,0 +1,51 @@
+# Waypoint hardening rules — Python / abuse
+# NEW proxy detectors. These do NOT duplicate python.yaml (ReDoS, IDOR lookup
+# already covered there). Best-effort recall markers for asymmetric cost shapes.
+rules:
+  - id: waypoint-py-unbounded-read
+    languages: [python]
+    severity: INFO
+    message: >
+      `.read()` with no size argument loads the entire stream into memory. Agent:
+      can the source (request body / upload / socket / remote file) be
+      attacker-sized (unbounded memory / DoS)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "read() with no size limit on an input stream — unbounded memory allocation / DoS?"
+    patterns:
+      - pattern: $X.read()
+      - pattern-not: $X.read($N)
+
+  - id: waypoint-py-input-driven-alloc
+    languages: [python]
+    severity: INFO
+    message: >
+      Allocation/iteration sized by a variable. Agent: can $N be attacker-driven
+      so that this list/range multiplication blows up memory or CPU (amplification)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "[x]*N or range(N) where N may be user-controlled — allocation amplification / DoS?"
+    patterns:
+      - pattern-either:
+          - pattern: "[$X] * $N"
+          - pattern: "$N * [$X]"
+          - pattern: range($N)
+      - pattern-not: "range(0, ...)"
+      - metavariable-pattern:
+          metavariable: $N
+          patterns:
+            - pattern-not: "1"
+            - pattern-not: "2"
+            - pattern-not: "3"
+            - pattern-not: "4"
+            - pattern-not: "5"
+            - pattern-not: "6"
+            - pattern-not: "7"
+            - pattern-not: "8"
+            - pattern-not: "9"
+            - pattern-not: "10"
+            - pattern-not: "100"
+            - pattern-not: "1000"
+            - pattern-not: "0"

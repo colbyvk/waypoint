@@ -1,0 +1,23 @@
+# Waypoint authz / access-control rules — React (.tsx, scanned as typescript).
+# Client-side authorization is not enforcement: a role gate in the UI is trivially
+# bypassed by hitting the API directly. Flag privilege-gated rendering so the agent
+# confirms the SERVER enforces the same check (defense in depth). Net-new.
+rules:
+  - id: waypoint-react-authz-clientside-guard
+    languages: [typescript]
+    severity: INFO
+    message: >
+      UI gated on a client-side role/privilege check. Agent: client guards are
+      bypassable — confirm the server/API enforces this authorization too.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "authorization decided client-side (isAdmin/role===admin) — is the same check enforced server-side, or is it bypassable?"
+    patterns:
+      - pattern-either:
+          - pattern: '$U.isAdmin && $X'
+          - pattern: '$U.isSuperuser && $X'
+          - pattern: '$U.isAdmin ? $A : $B'
+          - pattern: '$U.role === "admin" && $X'
+          - pattern: "$U.role === 'admin' && $X"
+          - pattern: '$U.role === "admin" ? $A : $B'

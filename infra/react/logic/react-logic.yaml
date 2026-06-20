@@ -1,0 +1,39 @@
+# Waypoint logic-smell rules — React (.tsx, scanned as typescript).
+# React-specific correctness bugs a pattern can catch: hooks called
+# conditionally (violates the Rules of Hooks — state desyncs / crashes) and
+# effects with no dependency array (re-run every render). Net-new: direct state
+# mutation, setState-in-async, index-as-key already live under edge-case/abuse.
+rules:
+  - id: waypoint-react-logic-conditional-hook
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A hook is called inside a conditional. Hooks must run in the same order on
+      every render; a conditional hook desyncs React's state and crashes. Agent:
+      confirm this hook is unconditionally reached.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "hook (use*) called inside an if-block — Rules of Hooks violation; state desync / runtime crash?"
+    patterns:
+      - pattern: $H(...)
+      - metavariable-regex:
+          metavariable: $H
+          regex: '^use[A-Z]'
+      - pattern-inside: |
+          if (...) { ... }
+
+  - id: waypoint-react-logic-effect-no-deps
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      useEffect with no dependency array runs after EVERY render — often an
+      unintended loop or wasted work. Agent: confirm this should run every render
+      (vs a `[]` / explicit deps).
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "useEffect with no dependency array — runs every render; missing `[]` or explicit deps?"
+    patterns:
+      # exactly one argument => no dependency array (a 2-arg call won't match)
+      - pattern: useEffect($FN)

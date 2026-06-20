@@ -1,0 +1,31 @@
+# ============================================================================
+# allowlist.yaml — human-accepted patterns (spec §9).
+#
+# Use this for findings a person has reviewed and decided to accept. Unlike the
+# content-hash store (which the agent writes automatically on a dismissal),
+# the allowlist is edited by hand and EVERY entry must carry:
+#   - justification : why this is accepted (free text, required)
+#   - expiry        : YYYY-MM-DD after which it is re-examined (required)
+# Entries missing either are ignored AND reported by rank.py — they never
+# silently suppress anything.
+#
+# An entry suppresses a beacon when ALL of its present selectors match:
+#   - rule_id      : fnmatch against the beacon's rule id(s)  e.g. "waypoint-py-*"
+#   - path         : fnmatch against the file path          e.g. "**/legacy/**"
+#   - content_hash : exact normalized-region hash (most precise)
+# ============================================================================
+allow:
+  # Example (active): the sample monorepo deliberately disables TLS verification
+  # to exercise the detector. We accept it in the fixture so it does not clutter
+  # real triage. Remove this entry to see the beacon resurface.
+  # Paths are matched relative to the directory you point Waypoint at.
+  - rule_id: "waypoint-py-tls-verify-disabled"
+    path: "**/settings.py"
+    justification: "Intentional insecure pattern in the bundled test fixture; not shipped."
+    expiry: "2027-01-01"
+
+  # Template — copy, fill in, and set a real expiry:
+  # - rule_id: "waypoint-py-path-traversal"
+  #   path: "src/legacy/importer.py"
+  #   justification: "Path is built from a server-side allowlist, not user input. Ticket SEC-1421."
+  #   expiry: "2026-12-31"

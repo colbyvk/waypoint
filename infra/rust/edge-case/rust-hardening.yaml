@@ -1,0 +1,58 @@
+# Waypoint hardening rules — Rust / edge-case (proxy detectors; recall-biased)
+# Covers panic-family beyond unwrap, lossy casts, panicking indexing.
+rules:
+  - id: waypoint-rust-panic-family
+    languages: [rust]
+    severity: INFO
+    message: >
+      A panic-family call (`expect`/`unreachable!`/`todo!`/`unimplemented!`/
+      `panic!`) can abort the process. Agent: is this branch reachable on a real
+      (esp. untrusted) input (DoS)?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "expect/unreachable/todo/unimplemented/panic — reachable on a real input (DoS)?"
+    patterns:
+      - pattern-either:
+          - pattern: $X.expect(...)
+          - pattern: unreachable!(...)
+          - pattern: todo!(...)
+          - pattern: unimplemented!(...)
+          - pattern: panic!(...)
+
+  - id: waypoint-rust-lossy-cast
+    languages: [rust]
+    severity: INFO
+    message: >
+      Numeric `as` cast to a narrower integer type can silently truncate/wrap.
+      Agent: can the source value exceed the target range for a real input
+      (lossy/incorrect result)?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "as u8/u16/u32/i32 narrowing cast — can the value overflow the target type and corrupt logic?"
+    patterns:
+      - pattern-either:
+          - pattern: "$X as u8"
+          - pattern: "$X as u16"
+          - pattern: "$X as u32"
+          - pattern: "$X as i8"
+          - pattern: "$X as i16"
+          - pattern: "$X as i32"
+
+  - id: waypoint-rust-panicking-index
+    languages: [rust]
+    severity: INFO
+    message: >
+      Direct `[...]` indexing on a collection panics on out-of-bounds. Agent: is
+      the index provably in-bounds for every input, or should this use `.get()`?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "slice/Vec index access — can the index be out of bounds on a real input (panic)?"
+    patterns:
+      - pattern: "$V[$I]"
+      - metavariable-pattern:
+          metavariable: $I
+          patterns:
+            - pattern-not-regex: ^"

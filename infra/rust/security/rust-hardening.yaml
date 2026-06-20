@@ -1,0 +1,118 @@
+# Waypoint hardening rules — Rust / security (proxy detectors; recall-biased)
+# NEW shapes only; does not duplicate command-shell/static-mut/unsafe-send-sync.
+rules:
+  - id: waypoint-rust-unsafe-block
+    languages: [rust]
+    severity: INFO
+    message: >
+      A raw `unsafe { ... }` block bypasses Rust's safety guarantees. Agent:
+      confirm every invariant the unsafe code relies on (aliasing, bounds,
+      validity, thread-safety) actually holds here.
+    metadata:
+      category: security
+      waypoint_axes: [security, concurrency]
+      waypoint_hypothesis: "raw unsafe block — is any memory/thread-safety invariant violable on a real input?"
+    pattern: "unsafe { ... }"
+
+  - id: waypoint-rust-mem-transmute
+    languages: [rust]
+    severity: ERROR
+    message: >
+      `mem::transmute` reinterprets bits between types with no checks. Agent:
+      are the source and target layouts guaranteed identical and the resulting
+      value always valid (memory-safety / UB)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "mem::transmute — could it produce an invalid value or break layout assumptions?"
+    patterns:
+      - pattern-either:
+          - pattern: mem::transmute(...)
+          - pattern: std::mem::transmute(...)
+          - pattern: core::mem::transmute(...)
+
+  - id: waypoint-rust-unchecked-access
+    languages: [rust]
+    severity: ERROR
+    message: >
+      Unchecked access (`from_utf8_unchecked`, `get_unchecked[_mut]`) skips the
+      validity/bounds check the safe API performs. Agent: is the index/byte
+      sequence provably valid for every reachable input (else UB)?
+    metadata:
+      category: security
+      waypoint_axes: [security, edge-case]
+      waypoint_hypothesis: "unchecked get/from_utf8 — can an out-of-bounds index or invalid UTF-8 reach this (UB)?"
+    patterns:
+      - pattern-either:
+          - pattern: $X.get_unchecked(...)
+          - pattern: $X.get_unchecked_mut(...)
+          - pattern: String::from_utf8_unchecked(...)
+          - pattern: str::from_utf8_unchecked(...)
+          - pattern: std::str::from_utf8_unchecked(...)
+          - pattern: from_utf8_unchecked(...)
+
+  - id: waypoint-rust-sql-format
+    languages: [rust]
+    severity: ERROR
+    message: >
+      SQL string built with `format!` and passed to a query/execute call. Agent:
+      is any interpolated value attacker-controlled (SQL injection)? Prefer bound
+      parameters.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "query/execute(format!(...)) — does an interpolated value reach the SQL string (injection)?"
+    patterns:
+      - pattern-either:
+          - pattern: sqlx::query(&format!(...))
+          - pattern: sqlx::query(format!(...))
+          - pattern: sqlx::query_as(&format!(...))
+          - pattern: sqlx::query_as(format!(...))
+          - pattern: $C.query(&format!(...))
+          - pattern: $C.query(format!(...))
+          - pattern: $C.execute(&format!(...))
+          - pattern: $C.execute(format!(...))
+
+  - id: waypoint-rust-command-dynamic-program
+    languages: [rust]
+    severity: WARNING
+    message: >
+      `Command::new` invoked with a non-literal program name. Agent: is the
+      program path attacker-influenced (command/path injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "Command::new(variable) — is the executed program name attacker-controlled?"
+    patterns:
+      - pattern-either:
+          - pattern: Command::new($VAR)
+          - pattern: std::process::Command::new($VAR)
+          - pattern: process::Command::new($VAR)
+      - metavariable-pattern:
+          metavariable: $VAR
+          patterns:
+            - pattern-not-regex: ^".*"$
+
+  - id: waypoint-rust-hardcoded-secret
+    languages: [rust]
+    severity: ERROR
+    message: >
+      A binding whose name looks like a credential is set to a string literal.
+      Agent: is this a real hardcoded secret (password/token/api key) that should
+      come from config/secret store?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "credential-named binding = string literal — is it a hardcoded secret?"
+    patterns:
+      - pattern-either:
+          - pattern: "let $NAME: $T = $V;"
+          - pattern: "let $NAME = $V;"
+          - pattern: "const $NAME: $T = $V;"
+          - pattern: "static $NAME: $T = $V;"
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(password|passwd|secret|api_?key|access_?key|auth_?token|token).*
+      - metavariable-regex:
+          metavariable: $V
+          regex: ^".+"$

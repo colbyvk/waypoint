@@ -1,0 +1,50 @@
+# Waypoint authz / access-control rules — TypeScript / JavaScript (OWASP A01).
+# Pattern-catchable broken-access-control: mass-assignment over-binding of the
+# request body, and privilege fields set straight from request input. Net-new.
+rules:
+  - id: waypoint-ts-authz-mass-assignment
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Request body assigned wholesale into a model/record. Agent: an attacker can
+      set fields you never intended (e.g. isAdmin, role) — mass assignment.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "untrusted req.body bulk-assigned into a model/ORM write — mass assignment / privilege escalation?"
+    patterns:
+      - pattern-either:
+          - pattern: Object.assign($X, req.body)
+          - pattern: Object.assign($X, request.body)
+          - pattern: new $M(req.body)
+          - pattern: new $M(request.body)
+          - pattern: "$OBJ.$METHOD({..., data: req.body})"
+          - pattern: "$OBJ.$METHOD({..., data: request.body})"
+
+  - id: waypoint-ts-authz-privilege-from-request
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A privilege/role field is assigned directly from request input. Agent: this
+      lets a caller grant themselves privileges — confirm server-side authorization.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "privilege field (isAdmin/role/permissions/…) set from req input — privilege escalation?"
+    patterns:
+      - pattern-either:
+          - pattern: $U.isAdmin = $RHS
+          - pattern: $U.isSuperuser = $RHS
+          - pattern: $U.role = $RHS
+          - pattern: $U.roles = $RHS
+          - pattern: $U.permissions = $RHS
+      - metavariable-pattern:
+          metavariable: $RHS
+          patterns:
+            - pattern-either:
+                - pattern: req.body
+                - pattern: req.body.$X
+                - pattern: req.body[...]
+                - pattern: req.query.$X
+                - pattern: request.body.$X
+                - pattern: request.body[...]

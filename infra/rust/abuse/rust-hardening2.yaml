@@ -1,0 +1,31 @@
+# Waypoint hardening2 rules — Rust / abuse (proxy detectors; recall-biased).
+# NEW shapes only. Does NOT duplicate alloc-from-size / read-unbounded
+# (rust-hardening.yaml). Best-effort recall marker for unbounded recursion.
+rules:
+  - id: waypoint-rust-unbounded-recursion
+    languages: [rust]
+    severity: INFO
+    message: >
+      A function calls itself with no obvious depth/size bound. Agent: can the
+      recursion depth be driven by untrusted input (nested data, large counter)
+      and blow the stack (DoS)? Confirm a depth limit exists.
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "self-recursive fn with no visible depth bound — input-driven stack overflow (DoS)?"
+    patterns:
+      # the self-call: a call whose callee name equals the enclosing fn name
+      - pattern: $FN(...)
+      - pattern-either:
+          - pattern-inside: |
+              fn $FN(...) -> $R { ... }
+          - pattern-inside: |
+              fn $FN(...) { ... }
+          - pattern-inside: |
+              pub fn $FN(...) -> $R { ... }
+          - pattern-inside: |
+              pub fn $FN(...) { ... }
+          - pattern-inside: |
+              pub(crate) fn $FN(...) -> $R { ... }
+          - pattern-inside: |
+              pub(crate) fn $FN(...) { ... }

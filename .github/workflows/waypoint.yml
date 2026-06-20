@@ -1,0 +1,98 @@
+# ============================================================================
+# Waypoint CI (spec §12)
+#
+# Assumes this Waypoint tree is the repository root (so .github/workflows/ is
+# picked up by GitHub). Two jobs, split by cost:
+#   * scan    — every PR and push. Deterministic, no AI, fast. Produces beacons,
+#               ranks + suppresses, uploads SARIF to the Security tab. The cheap
+#               pass must never block on agent cost.
+#   * triage  — on a SCHEDULE (nightly), not per-PR, because agent calls cost
+#               money/time. Dispatches the top-N ranked beacons to a verifier
+#               agent and commits any new suppressions back.
+#
+# WAYPOINT_TARGET picks what to scan. It defaults to the bundled sample monorepo
+# so a fresh clone demonstrably produces beacons — CHANGE IT to your own source
+# (e.g. "src services app"); samples/ is Waypoint's own test fixture.
+# ============================================================================
+name: waypoint
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 7 * * *"      # 07:00 UTC nightly — agent triage sweep
+  workflow_dispatch:
+
+permissions:
+  contents: write            # triage commits suppression updates
+  security-events: write     # upload SARIF to the Security tab
+
+env:
+  WAYPOINT_TARGET: samples/monorepo   # <-- change to your source paths
+
+jobs:
+  scan:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }      # full history so gitleaks can scan it
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Install detectors
+        run: ./detectors/install.sh
+        # add optional detectors: ./detectors/install.sh --brew --node samples/monorepo/react_app
+
+      - name: Scan (detect → merge → rank)
+        run: ./bin/waypoint "$WAYPOINT_TARGET"
+
+      # Policy gate ("teeth"): fail the PR when beacons violate waypoint.config.yaml
+      # `gate:` (e.g. a high-severity security/pit finding). Opt-in — uncomment to
+      # enforce. Tune the thresholds in waypoint.config.yaml before enabling.
+      # - name: Policy gate
+      #   run: ./bin/waypoint "$WAYPOINT_TARGET" --gate
+
+      - name: Upload SARIF (native Security tab)
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: reports/ranked.sarif, category: waypoint }
+
+      - name: Archive run reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: waypoint-reports, path: reports/ }
+
+  triage:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Install detectors
+        run: |
+          ./detectors/install.sh
+          .venv/bin/pip install --quiet anthropic   # for the anthropic-api backend
+
+      - name: Scan + dispatch top-N to the verifier agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: ./bin/waypoint "$WAYPOINT_TARGET" --backend anthropic-api
+
+      - name: Commit suppression updates
+        run: |
+          git config user.name  "waypoint-bot"
+          git config user.email "waypoint-bot@users.noreply.github.com"
+          if ! git diff --quiet -- suppression/store.json; then
+            git add suppression/store.json
+            git commit -m "waypoint: record agent verdicts (suppress dismissed beacons)"
+            git push
+          fi
+
+      - name: Archive verdicts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: waypoint-verdicts, path: reports/ }

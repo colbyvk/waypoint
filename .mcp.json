@@ -1,0 +1,9 @@
+{
+  "$comment": "Waypoint MCP server. Project-scoped config: Claude Code auto-discovers this file; Cursor/Gemini/Codex use their own MCP config (copy the block below, replacing ./bin/waypoint-mcp with the ABSOLUTE path). Run detectors/install.sh once first so .venv exists.",
+  "mcpServers": {
+    "waypoint": {
+      "command": "./bin/waypoint-mcp",
+      "args": []
+    }
+  }
+}

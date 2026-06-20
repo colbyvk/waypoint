@@ -1,0 +1,17 @@
+# Waypoint house security rules — React (JSX; spec §3.2.1)
+rules:
+  - id: waypoint-react-dangerous-html
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      dangerouslySetInnerHTML with a non-constant value. Agent: can user content
+      reach this without sanitization (stored/reflected XSS)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "dangerouslySetInnerHTML from non-constant — XSS?"
+    patterns:
+      - pattern-either:
+          - pattern: "<$EL dangerouslySetInnerHTML={{__html: $X}} />"
+          - pattern: "<$EL dangerouslySetInnerHTML={{__html: $X}}>...</$EL>"
+          - pattern: "<$EL ... dangerouslySetInnerHTML={{__html: $X}} ... />"

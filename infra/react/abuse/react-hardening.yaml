@@ -1,0 +1,58 @@
+# Waypoint hardening rules — React / abuse (proxy detectors; recall-biased)
+# This dir was previously empty (see README.md). These flag render-time
+# perf-amplification shapes: fresh inline function/object/array literals passed
+# as props (defeat memo / cause child re-render storms) and heavy work
+# (new RegExp / JSON.parse / sort) in render scope.
+rules:
+  - id: waypoint-react-inline-prop-literal
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A new function/object/array literal is created inline as a JSX prop, so it
+      gets a fresh identity every render. Agent: if the child is memoized or uses
+      this in a dependency array, this defeats memoization and amplifies
+      re-renders — quantify the cost on a hot/large-list path.
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "inline arrow/object/array literal as a prop — new identity each render defeats memo and storms child re-renders?"
+    patterns:
+      - pattern-either:
+          - pattern: "<$EL ... $PROP={() => ...} ... />"
+          - pattern: "<$EL $PROP={() => ...} ... />"
+          - pattern: "<$EL ... $PROP={() => ...} />"
+          - pattern: "<$EL $PROP={() => ...} />"
+          - pattern: "<$EL ... $PROP={(...) => ...} ... />"
+          - pattern: "<$EL $PROP={(...) => ...} ... />"
+          - pattern: "<$EL ... $PROP={(...) => ...} />"
+          - pattern: "<$EL $PROP={(...) => ...} />"
+          - pattern: "<$EL ... $PROP={{...}} ... />"
+          - pattern: "<$EL $PROP={{...}} ... />"
+          - pattern: "<$EL ... $PROP={{...}} />"
+          - pattern: "<$EL $PROP={{...}} />"
+          - pattern: "<$EL ... $PROP={[...]} ... />"
+          - pattern: "<$EL $PROP={[...]} ... />"
+          - pattern: "<$EL ... $PROP={[...]} />"
+          - pattern: "<$EL $PROP={[...]} />"
+      # do not double-count the React key (handled by edge-case rules)
+      - metavariable-regex:
+          metavariable: $PROP
+          regex: '^(?!key$).*'
+
+  - id: waypoint-react-heavy-work-in-render
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Potentially heavy work (new RegExp / JSON.parse / array sort) appears in a
+      component/render scope rather than memoized or in an effect. Agent: on a
+      large input or frequent re-render, does this become a per-render CPU
+      amplification (jank / DoS)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "new RegExp / JSON.parse / .sort() in render path — per-render CPU amplification on large input?"
+    patterns:
+      - pattern-either:
+          - pattern: "new RegExp(...)"
+          - pattern: "JSON.parse(...)"
+          - pattern: "$ARR.sort(...)"

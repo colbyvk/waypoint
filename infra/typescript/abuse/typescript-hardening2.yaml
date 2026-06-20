@@ -1,0 +1,26 @@
+# Waypoint hardening2 rules — TypeScript / abuse (proxy detectors; recall-biased).
+# NEW shapes only; does NOT duplicate unbounded-loop / unbounded-allocation
+# (typescript-hardening.yaml) or redos (typescript.yaml).
+rules:
+  - id: waypoint-ts-unbounded-findmany
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A Prisma-style findMany({...}) query has no take/limit. Agent: can the
+      result set be attacker-influenced and unbounded, returning huge payloads
+      and exhausting memory (missing pagination / DoS)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "findMany() with no take/limit — unbounded result set (missing pagination, memory DoS)?"
+    patterns:
+      - pattern-either:
+          - pattern: $REPO.findMany()
+          - pattern: "$REPO.findMany({ ... })"
+          - pattern: $REPO.find()
+          - pattern: "$REPO.find({ ... })"
+      - pattern-not: "$REPO.findMany({ ..., take: $T, ... })"
+      - pattern-not: "$REPO.findMany({ ..., limit: $T, ... })"
+      - pattern-not: "$REPO.find({ ..., take: $T, ... })"
+      - pattern-not: "$REPO.find({ ..., limit: $T, ... })"
+      - pattern-not: "$REPO.findMany({ ..., where: { ..., id: $ID, ... }, ... })"

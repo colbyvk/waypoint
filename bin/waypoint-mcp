@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# ============================================================================
+# waypoint-mcp — launch the Waypoint MCP server under Waypoint's OWN venv, so
+# any MCP-capable agent (Claude Code, Cursor, Gemini, ChatGPT/Codex) can drive
+# the whole tool. Speaks MCP over stdio. Registered via the repo's .mcp.json
+# (or your agent's global MCP config — see README → "Use it from your agent").
+# ============================================================================
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="$ROOT/.venv/bin/python"; [ -x "$PY" ] || PY="$(command -v python3)"
+if ! "$PY" -c "import mcp" >/dev/null 2>&1; then
+  echo "waypoint-mcp: the 'mcp' package is missing — run detectors/install.sh" \
+       "(it's pinned in requirements.txt)." >&2
+  exit 1
+fi
+exec "$PY" "$ROOT/integrations/mcp/waypoint_mcp.py" "$@"

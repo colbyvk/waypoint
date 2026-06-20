@@ -1,0 +1,16 @@
+{
+  "outcomes": [
+    {"scenario": {"Mutant": {"package": "rust_service", "file": "src/state.rs",
+      "function": {"function_name": "apply_update"},
+      "span": {"start": {"line": 42, "column": 5}},
+      "replacement": "true", "genre": "FnValue"}}, "summary": "MissedMutant"},
+    {"scenario": {"Mutant": {"package": "rust_service", "file": "src/exec.rs",
+      "function": {"function_name": "dispatch"},
+      "span": {"start": {"line": 18, "column": 9}},
+      "replacement": "Default::default()"}}, "summary": "Timeout"},
+    {"scenario": {"Mutant": {"file": "src/safe.rs",
+      "span": {"start": {"line": 7}}, "replacement": "-"}}, "summary": "CaughtMutant"}
+  ],
+  "total_mutants": 3,
+  "missed": 1
+}

@@ -1,0 +1,55 @@
+# Waypoint concurrency-proxy rules — Rust (spec §6.2)
+rules:
+  # highest-value: a hand-written unsafe Send/Sync asserts a thread-safety
+  # invariant the compiler cannot check.
+  - id: waypoint-rust-unsafe-send-sync
+    languages: [rust]
+    severity: WARNING
+    message: >
+      Manual `unsafe impl Send/Sync`. The compiler cannot verify thread safety
+      here. Agent: confirm the safety invariant actually holds across threads.
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, security]
+      waypoint_hypothesis: "hand-written unsafe Send/Sync — is the cross-thread invariant actually sound?"
+    patterns:
+      - pattern-either:
+          - pattern: unsafe impl Send for $T { ... }
+          - pattern: unsafe impl Sync for $T { ... }
+          - pattern: unsafe impl Send for $T {}
+          - pattern: unsafe impl Sync for $T {}
+
+  # static mut is shared, unsynchronized global state.
+  - id: waypoint-rust-static-mut
+    languages: [rust]
+    severity: WARNING
+    message: >
+      `static mut` is unsynchronized global mutable state. Agent: confirm there
+      is no concurrent access (data race / UB).
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, security]
+      waypoint_hypothesis: "static mut accessed — any concurrent reader/writer (data race)?"
+    patterns:
+      - pattern-either:
+          - pattern: "static mut $N: $T = $E;"
+          - pattern: "static mut $N: $T = $E"
+
+  # concurrency-present markers (the primitive itself is the beacon)
+  - id: waypoint-rust-concurrency-primitive
+    languages: [rust]
+    severity: INFO
+    message: >
+      Thread/task spawn or shared Arc present. Agent: is any shared state
+      accessed without correct synchronization?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "spawn/Arc present — unsynchronized shared-state access nearby?"
+    patterns:
+      - pattern-either:
+          - pattern: std::thread::spawn(...)
+          - pattern: thread::spawn(...)
+          - pattern: tokio::spawn(...)
+          - pattern: Arc::new(Mutex::new(...))
+          - pattern: Arc::new(RwLock::new(...))

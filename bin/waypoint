@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# ============================================================================
+# waypoint — point it at a directory and triage the whole tree.
+#
+#   waypoint <dir>                 scan a directory:  detect → merge → rank
+#   waypoint <dir> --dispatch      also send the top-N beacons to the verifier agent
+#   waypoint <dir> --investigate   send the ranked BLIND SPOTS (regions the static
+#                                  pass could not verify) to the LLM "dark zone"
+#   waypoint <dir> --backend NAME  live backend for --dispatch / --investigate
+#                                  (dry-run | claude-cli | anthropic-api)
+#   waypoint <dir> --top-n N       cap how many beacons are dispatched
+#   waypoint <dir> --gate          fail (exit 1) if beacons violate the policy gate
+#   waypoint <dir> --logic         also run the logic lane (mutation/race/fuzz/property) — RUNS TARGET CODE
+#   waypoint <dir> --codeql        also run CodeQL cross-file taint (slow; needs the CodeQL CLI)
+#   waypoint <dir> --all / --deep  run EVERYTHING: all detectors + logic lane + CodeQL — RUNS TARGET CODE
+#   waypoint <dir> --i-trust-this-code   permit the lanes that run the target's own code (or WAYPOINT_TRUSTED=1)
+#   waypoint <dir> --calibrate     recompute per-rule precision from past verdicts before ranking
+#   waypoint <dir> --fast          fast tier (DEFAULT): deterministic scanners only, no agent/CodeQL — seconds, $0
+#   waypoint <dir> --changed       incremental: scan only files changed in the working tree (+ cached baseline)
+#   waypoint <dir> --since REF     incremental: scan only files changed since git REF (branch/commit)
+#   waypoint --test                run Waypoint's own test suite
+#   waypoint --help
+#
+# TIERS:  fast (default, $0, seconds) → --deep (CodeQL + logic, minutes) →
+#         --dispatch (agent verifies the top-N beacons, $). The agent is never in
+#         the mass-scan path; it only verifies what the deterministic tiers rank.
+# SAFETY: --logic/--deep EXECUTE the scanned code. For UNTRUSTED code, scan inside
+#         the locked-down container:  bin/waypoint-sandboxed <dir> --deep
+#
+# Waypoint is a COMMAND, not a PR bot: it runs across whatever directory you
+# point it at and writes results to <waypoint>/reports/ (beacons.sarif,
+# ranked.sarif, dispatch/). Put it on PATH with:
+#   ln -s "$(pwd)/bin/waypoint" /usr/local/bin/waypoint
+# ============================================================================
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="$ROOT/.venv/bin/python"; [ -x "$PY" ] || PY="$(command -v python3)"
+
+usage() {
+  grep -E '^#( |$)' "$0" | sed -E 's/^# ?//' | sed -n '2,30p'
+  exit "${1:-0}"
+}
+
+TARGET=""; DISPATCH=0; BACKEND=""; TOPN=""; GATE=0; LOGIC=0; CODEQL=0; ALL=0; CALIBRATE=0
+FAST=0; CHANGED=0; CHANGED_REF=""; TRUST=0; INVESTIGATE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --test)       exec "$PY" -m pytest "$ROOT/tests" -q ;;
+    --doctor)     exec bash "$ROOT/detectors/doctor.sh" ;;
+    --version)    echo "waypoint $(cat "$ROOT/VERSION" 2>/dev/null || echo '?')"; exit 0 ;;
+    -h|--help)    usage 0 ;;
+    --dispatch)   DISPATCH=1 ;;
+    --investigate) INVESTIGATE=1 ;;
+    --backend)    BACKEND="${2:-}"; shift ;;
+    --top-n)      TOPN="${2:-}"; shift ;;
+    --gate)       GATE=1 ;;
+    --logic)      LOGIC=1 ;;
+    --codeql)     CODEQL=1 ;;
+    --calibrate)  CALIBRATE=1 ;;
+    --all|--deep) ALL=1 ;;
+    --fast)       FAST=1 ;;
+    --i-trust-this-code) TRUST=1 ;;
+    --changed)    CHANGED=1 ;;
+    --since)      CHANGED=1; CHANGED_REF="${2:-}"; shift ;;
+    -*)           echo "waypoint: unknown option '$1'" >&2; usage 2 ;;
+    *)            TARGET="$1" ;;
+  esac
+  shift
+done
+
+# --all / --deep = run every CLI scanner at once: detectors + logic lane + CodeQL.
+[ "$ALL" = 1 ] && { LOGIC=1; CODEQL=1; }
+# --backend without an explicit mode implies --dispatch (back-compat); with
+# --investigate it selects the backend for the dark-zone pass instead.
+[ -n "$BACKEND" ] && [ "$INVESTIGATE" = 0 ] && DISPATCH=1
+# Tier label for the banner. The agent (--dispatch) is never part of a tier — it
+# only verifies what the deterministic tiers rank.
+TIER="fast"; { [ "$LOGIC" = 1 ] || [ "$CODEQL" = 1 ]; } && TIER="deep"
+
+# The dynamic lanes (--logic / --deep) EXECUTE the target's own code (its tests,
+# fuzzers, build scripts). Refuse on untrusted code unless explicitly allowed.
+[ "${WAYPOINT_TRUSTED:-}" = "1" ] && TRUST=1
+if [ "$LOGIC" = 1 ] && [ "$TRUST" != 1 ]; then
+  echo "[waypoint] refusing --logic/--deep: these run the TARGET's OWN code (tests," >&2
+  echo "           fuzzers, build scripts). Run only on code you trust:" >&2
+  echo "             - bin/waypoint-sandboxed <dir> --deep            (isolated container — safest)" >&2
+  echo "             - bin/waypoint <dir> --deep --i-trust-this-code  (or WAYPOINT_TRUSTED=1)" >&2
+  exit 2
+fi
+
+[ -n "$TARGET" ] || { echo "waypoint: need a target directory" >&2; usage 2; }
+[ -d "$TARGET" ] || { echo "waypoint: not a directory: $TARGET" >&2; exit 2; }
+TARGET="$(cd "$TARGET" && pwd)"   # normalize to absolute
+
+[ -x "$ROOT/.venv/bin/python" ] || \
+  echo "[waypoint] note: no .venv found — run detectors/install.sh for full coverage" >&2
+
+# Incremental setup: resolve changed files via git, decide full-vs-incremental.
+# Baseline cache is keyed by target path, so scanning repo B never reuses A's cache.
+_bkey="$("$PY" -c "import hashlib,sys;print(hashlib.sha1(sys.argv[1].encode()).hexdigest()[:12])" "$TARGET" 2>/dev/null || echo default)"
+mkdir -p "$ROOT/reports/_work"
+# Baseline lives under reports/_work/ — NOT reports/, because run_all.sh wipes
+# reports/*.sarif at the start of every scan (that would delete the cache).
+BASELINE="$ROOT/reports/_work/baseline-$_bkey.sarif"; CHANGED_LIST="$ROOT/reports/_work/changed.txt"; SKIP_DETECT=0
+if [ "$CHANGED" = 1 ]; then
+  mkdir -p "$ROOT/reports/_work"
+  if git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # Validate the user-supplied ref: reject option-injection and bogus commits.
+    if [ -n "$CHANGED_REF" ]; then
+      case "$CHANGED_REF" in -*) echo "waypoint: invalid --since ref '$CHANGED_REF'" >&2; exit 2 ;; esac
+      git -C "$TARGET" rev-parse --verify --quiet "$CHANGED_REF^{commit}" >/dev/null 2>&1 \
+        || { echo "waypoint: --since ref '$CHANGED_REF' is not a valid commit" >&2; exit 2; }
+    fi
+    # NUL-delimited throughout so filenames with spaces/newlines are handled safely;
+    # prepend the target path in-loop (no sed '#' delimiter that $TARGET could break).
+    : > "$CHANGED_LIST"
+    { if [ -n "$CHANGED_REF" ]; then
+        git -C "$TARGET" diff -z --name-only "$CHANGED_REF" -- 2>/dev/null
+      else
+        git -C "$TARGET" diff -z --name-only HEAD -- 2>/dev/null
+        git -C "$TARGET" ls-files -z --others --exclude-standard 2>/dev/null
+      fi; } | while IFS= read -r -d '' rel; do
+        [ -n "$rel" ] && printf '%s/%s\0' "$TARGET" "$rel" >> "$CHANGED_LIST"
+      done
+    NCHANGED=$(tr -dc '\0' < "$CHANGED_LIST" | wc -c | tr -d ' ')
+    if [ ! -s "$BASELINE" ]; then
+      echo "[waypoint] --changed: no baseline cache yet → full scan to build one"; CHANGED=0
+    elif [ "$NCHANGED" = 0 ]; then
+      echo "[waypoint] --changed: no changes vs ${CHANGED_REF:-working tree} → reusing baseline"; SKIP_DETECT=1
+    else
+      echo "[waypoint] --changed: $NCHANGED changed file(s) → incremental scan"; export WAYPOINT_FILES="$CHANGED_LIST"
+    fi
+  else
+    echo "[waypoint] --changed: $TARGET is not a git repo → full scan"; CHANGED=0
+  fi
+fi
+
+echo "[waypoint] scanning: $TARGET  (tier: $TIER$([ "$CHANGED" = 1 ] && echo ', incremental'))"
+# Capability banner: never let a partial install be a silent surprise — say up
+# front which detectors are active and what's degraded (full detail: --doctor).
+bash "$ROOT/detectors/doctor.sh" --brief || true
+echo "[waypoint] ── detect ─────────────────────────────────────────────"
+if [ "$SKIP_DETECT" = 1 ]; then
+  cp "$BASELINE" "$ROOT/reports/beacons.sarif"
+else
+  bash "$ROOT/detectors/run_all.sh" "$TARGET"
+
+  if [ "$LOGIC" = 1 ]; then
+    echo "[waypoint] ── logic lane (mutation / race / fuzz / property) ───────"
+    WAYPOINT_LOGIC=1 WAYPOINT_TRUSTED=1 bash "$ROOT/detectors/run_logic.sh" "$TARGET"
+  fi
+
+  if [ "$CODEQL" = 1 ]; then
+    echo "[waypoint] ── codeql lane (cross-file taint) ─────────────────────"
+    WAYPOINT_CODEQL=1 bash "$ROOT/detectors/run_codeql.sh" "$TARGET"
+  fi
+
+  echo "[waypoint] ── merge ──────────────────────────────────────────────"
+  "$PY" "$ROOT/detectors/merge_sarif.py" "$ROOT"/reports/*.sarif \
+    -o "$ROOT/reports/beacons.sarif" --base "$TARGET"
+
+  if [ "$CHANGED" = 1 ]; then
+    echo "[waypoint] ── incremental merge (changed files + cached baseline) ──"
+    "$PY" "$ROOT/prioritise/incremental.py" "$ROOT/reports/beacons.sarif" \
+      --baseline "$BASELINE" --changed "$CHANGED_LIST" \
+      -o "$ROOT/reports/beacons.sarif" --base "$TARGET"
+  fi
+fi
+
+# Refresh the baseline cache (the current full picture) for next time.
+cp "$ROOT/reports/beacons.sarif" "$BASELINE" 2>/dev/null || true
+
+if [ "$CALIBRATE" = 1 ]; then
+  echo "[waypoint] ── calibrate (per-rule precision from past verdicts) ────"
+  "$PY" "$ROOT/prioritise/calibration.py"
+fi
+
+echo "[waypoint] ── rank + suppress ────────────────────────────────────"
+RANK_ARGS=(--base "$TARGET"); [ -n "$TOPN" ] && RANK_ARGS+=(--top-n "$TOPN")
+"$PY" "$ROOT/prioritise/rank.py" "$ROOT/reports/beacons.sarif" "${RANK_ARGS[@]}"
+
+echo "[waypoint] ── drop beacons (.md) ─────────────────────────────────"
+"$PY" "$ROOT/prioritise/emit_beacons.py" "$ROOT/reports/ranked.sarif"
+
+# Coverage / blind-spot map: what the deterministic pass COULD NOT reason about.
+# Cheap (reuses the call graph); always emitted alongside the beacons so "no
+# beacon here" is never silently mistaken for "this code is safe".
+echo "[waypoint] ── coverage map (blind spots / dark zone) ─────────────"
+"$PY" "$ROOT/prioritise/coverage.py" "$TARGET" || true
+
+if [ "$DISPATCH" = 1 ]; then
+  echo "[waypoint] ── dispatch ───────────────────────────────────────────"
+  D_ARGS=(--base "$TARGET")
+  [ -n "$BACKEND" ] && D_ARGS+=(--backend "$BACKEND")
+  [ -n "$TOPN" ]    && D_ARGS+=(--top-n "$TOPN")
+  "$PY" "$ROOT/dispatch/fallback_dispatcher.py" "$ROOT/reports/ranked.sarif" "${D_ARGS[@]}"
+fi
+
+if [ "$INVESTIGATE" = 1 ]; then
+  echo "[waypoint] ── investigate (LLM dark zone: ranked blind spots) ────"
+  I_ARGS=(--investigate --base "$TARGET")
+  [ -n "$BACKEND" ] && I_ARGS+=(--backend "$BACKEND")
+  [ -n "$TOPN" ]    && I_ARGS+=(--top-n "$TOPN")
+  "$PY" "$ROOT/dispatch/fallback_dispatcher.py" "${I_ARGS[@]}"
+fi
+
+if [ "$GATE" = 1 ]; then
+  echo "[waypoint] ── policy gate ────────────────────────────────────────"
+  "$PY" "$ROOT/prioritise/gate.py" "$ROOT/reports/ranked.sarif" --force || {
+    echo "[waypoint] gate FAILED → exiting non-zero"; exit 1; }
+fi
+
+echo "[waypoint] done → beacons: $ROOT/beacons/INDEX.md  ·  dark zone: $ROOT/beacons/BLINDSPOTS.md"

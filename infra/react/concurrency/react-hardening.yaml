@@ -1,0 +1,42 @@
+# Waypoint hardening rules — React / concurrency (proxy detectors; recall-biased)
+# Complements the existing async-effect / setState-in-async rules
+# (infra/react/concurrency/react.yaml). These target uncleaned timers and event
+# listeners registered in useEffect — the classic leak / fire-after-unmount race.
+rules:
+  - id: waypoint-react-timer-in-effect-no-cleanup
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      useEffect starts a timer (setInterval/setTimeout) but returns no cleanup
+      that clears it. Agent: confirm or deny a leaked timer that fires after
+      unmount (set-state-after-unmount) or stacks duplicate timers on re-run.
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, edge-case]
+      waypoint_hypothesis: "setInterval/setTimeout in useEffect with no clearInterval/clearTimeout cleanup — fire-after-unmount / duplicate timers?"
+    patterns:
+      - pattern-either:
+          - pattern: "useEffect(() => { ... setInterval(...); ... }, [...]);"
+          - pattern: "useEffect(() => { ... setTimeout(...); ... }, [...]);"
+          - pattern: "useEffect(() => { ... setInterval(...); ... });"
+          - pattern: "useEffect(() => { ... setTimeout(...); ... });"
+      - pattern-not-regex: 'clearInterval'
+      - pattern-not-regex: 'clearTimeout'
+
+  - id: waypoint-react-listener-in-effect-no-cleanup
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      useEffect registers an event listener (addEventListener/subscribe) but
+      returns no cleanup removing it. Agent: confirm or deny a leaked listener
+      that keeps firing after unmount and accumulates on every re-run.
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency, edge-case]
+      waypoint_hypothesis: "addEventListener/subscribe in useEffect with no removeEventListener/unsubscribe cleanup — leaked handler firing after unmount?"
+    patterns:
+      - pattern-either:
+          - pattern: "useEffect(() => { ... $T.addEventListener(...); ... }, [...]);"
+          - pattern: "useEffect(() => { ... $T.addEventListener(...); ... });"
+          - pattern: "useEffect(() => { ... addEventListener(...); ... }, [...]);"
+      - pattern-not-regex: 'removeEventListener'

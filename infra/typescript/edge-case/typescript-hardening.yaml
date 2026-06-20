@@ -1,0 +1,45 @@
+# Waypoint hardening rules — TypeScript edge-case (proxy detectors; optimize for recall).
+# New shapes only; does NOT duplicate empty-catch / non-null-assertion already in typescript.yaml.
+rules:
+  - id: waypoint-ts-loose-equality
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Loose equality (== / !=) performs type coercion. Agent: can the operands be of
+      different types such that coercion yields a surprising truthiness (e.g. 0 == "",
+      null == undefined) and change control flow?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "loose == / != — coercion produces a wrong comparison result?"
+    patterns:
+      - pattern-either:
+          - pattern: $A == $B
+          - pattern: $A != $B
+      - pattern-not: $A === $B
+      - pattern-not: $A !== $B
+      - pattern-not: $X == null
+      - pattern-not: $X != null
+      - pattern-not: null == $X
+      - pattern-not: null != $X
+      - pattern-not: $X == undefined
+      - pattern-not: $X != undefined
+
+  - id: waypoint-ts-json-parse-no-try
+    languages: [typescript]
+    severity: INFO
+    message: >
+      JSON.parse is called outside any try/catch. Agent: can the input be malformed
+      JSON, and would the resulting SyntaxError crash this path or escape as an
+      unhandled rejection?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "JSON.parse with no surrounding try/catch — unhandled SyntaxError on bad input?"
+    patterns:
+      - pattern: JSON.parse($X)
+      - pattern-not: JSON.parse("...")
+      - pattern-not-inside: "try { ... } catch ($E) { ... }"
+      - pattern-not-inside: "try { ... } catch { ... }"
+      - pattern-not-inside: "try { ... } catch ($E) { ... } finally { ... }"
+      - pattern-not-inside: "try { ... } finally { ... }"

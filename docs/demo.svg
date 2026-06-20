@@ -1,0 +1,33 @@
+<svg viewBox="0 0 780 446" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">
+  <title>Waypoint — a fast-tier scan: ranked beacons + the dark zone</title>
+  <!-- terminal window (self-contained dark bg so it reads on any GitHub theme) -->
+  <rect x="1" y="1" width="778" height="444" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <rect x="1" y="1" width="778" height="32" rx="10" fill="#161b22"/>
+  <rect x="1" y="22" width="778" height="11" fill="#161b22"/>
+  <circle cx="20" cy="17" r="6" fill="#ff5f56"/>
+  <circle cx="40" cy="17" r="6" fill="#ffbd2e"/>
+  <circle cx="60" cy="17" r="6" fill="#27c93f"/>
+  <text x="390" y="21" text-anchor="middle" fill="#8b949e" font-size="12">waypoint · fast tier · $0 · no target code executed</text>
+
+  <g>
+    <text x="18" y="60"><tspan fill="#58a6ff">$</tspan> <tspan fill="#c9d1d9">bin/waypoint ./your-repo</tspan></text>
+    <text x="18" y="84" fill="#8b949e">[waypoint] capabilities: core <tspan fill="#3fb950">[ok]</tspan> · degraded: <tspan fill="#d29922">eslint[--] (TS→semgrep-only)</tspan></text>
+    <text x="18" y="105" fill="#8b949e">[waypoint] scanning: ./your-repo  (tier: fast)</text>
+    <text x="18" y="126" fill="#c9d1d9">merge: 642 raw <tspan fill="#8b949e">→</tspan> 391 beacons   rank <tspan fill="#8b949e">→</tspan> 389 active · 2 suppressed</text>
+    <text x="18" y="147" fill="#c9d1d9">coverage: dark zone <tspan fill="#8b949e">→</tspan> 293 blind spots (<tspan fill="#d29922">25 attack-surface-relevant</tspan>)</text>
+    <text x="18" y="168" fill="#8b949e">done <tspan fill="#3fb950">→</tspan> beacons/INDEX.md · beacons/BLINDSPOTS.md</text>
+
+    <text x="18" y="204" font-weight="bold" fill="#e6edf3">BEACONS — what it found</text>
+    <text x="18" y="226" fill="#c9d1d9"><tspan fill="#7ee787">1.83</tspan>  py_service/db.py:17   <tspan fill="#f0883e">S608</tspan>  <tspan fill="#f85149">SQL injection</tspan></text>
+    <text x="18" y="247" fill="#c9d1d9"><tspan fill="#7ee787">1.80</tspan>  py_service/app.py:8   <tspan fill="#f0883e">S307</tspan>  <tspan fill="#f85149">eval() of request input</tspan></text>
+    <text x="18" y="268" fill="#c9d1d9"><tspan fill="#7ee787">1.80</tspan>  …/hardening_samples.py  <tspan fill="#f0883e">SSTI</tspan>  <tspan fill="#f85149">render_template_string</tspan></text>
+
+    <text x="18" y="304" font-weight="bold" fill="#e6edf3">DARK ZONE — what it could NOT verify  <tspan font-weight="normal" fill="#8b949e">(silence ≠ safe)</tspan></text>
+    <text x="18" y="326" fill="#c9d1d9"><tspan fill="#d29922">1.8</tspan>  app.py:12  calc()     <tspan fill="#8b949e">eval — executes computed code</tspan></text>
+    <text x="40" y="347" fill="#8b949e">↳ can untrusted input reach this eval?  <tspan fill="#f85149">(RCE)</tspan></text>
+    <text x="18" y="368" fill="#c9d1d9"><tspan fill="#d29922">1.5</tspan>  exec.ts:6  evalExpr()  <tspan fill="#8b949e">eval</tspan></text>
+
+    <text x="18" y="404" fill="#8b949e">Full ranked set → reports/ranked.sarif    Add <tspan fill="#58a6ff">--investigate</tspan> to send the dark zone to an LLM.</text>
+    <text x="18" y="428" fill="#6e7681" font-size="12">Or just tell your agent: “Use Waypoint to check this repo.”</text>
+  </g>
+</svg>

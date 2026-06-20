@@ -1,0 +1,43 @@
+# Waypoint edge-case rules — Python (spec §3.2.2)
+# Dropped errors / swallowed exceptions. Overlaps Ruff E722/S110; kept as house
+# rules so a Semgrep-only stance still surfaces them (merge dedups the overlap).
+rules:
+  - id: waypoint-py-bare-except
+    languages: [python]
+    severity: INFO
+    message: >
+      Bare `except:` catches everything (including KeyboardInterrupt/SystemExit).
+      Agent: what failure is being masked, and is control flow hidden?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "bare except — which errors are silently caught (incl. KeyboardInterrupt)?"
+    patterns:
+      - pattern: |
+          try:
+            ...
+          except:
+            ...
+
+  - id: waypoint-py-swallowed-exception
+    languages: [python]
+    severity: INFO
+    message: >
+      Exception caught and dropped (`except …: pass`). Agent: is a real failure
+      being silently swallowed here?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "except…: pass — a dropped error that should be handled or logged?"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              try:
+                ...
+              except:
+                pass
+          - pattern: |
+              try:
+                ...
+              except $E:
+                pass

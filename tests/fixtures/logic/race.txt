@@ -1,0 +1,12 @@
+==================
+WARNING: DATA RACE
+Write at 0x00c0000a4010 by goroutine 7:
+  main.(*Counter).Inc()
+      /app/ingest/counter.go:15 +0x44
+Previous read at 0x00c0000a4010 by goroutine 6:
+  main.(*Counter).Value()
+      /app/ingest/counter.go:20 +0x3a
+Goroutine 7 (running) created at:
+  main.main()
+      /app/main.go:30 +0x88
+==================

@@ -1,0 +1,219 @@
+# Waypoint hardening rules — TypeScript security (proxy detectors; optimize for recall).
+# New shapes only; does NOT duplicate eval / child-process(exec) / redos already in typescript.yaml.
+rules:
+  - id: waypoint-ts-dom-xss-sink
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      HTML sink (innerHTML/outerHTML/document.write/insertAdjacentHTML) assigned a
+      non-literal value. Agent: can attacker-controlled input reach this sink without
+      sanitization (DOM XSS)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "non-literal HTML sink — does untrusted input reach it unescaped (DOM XSS)?"
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $X
+          - pattern: $EL.outerHTML = $X
+          - pattern: document.write($X)
+          - pattern: document.writeln($X)
+          - pattern: $EL.insertAdjacentHTML($POS, $X)
+      - pattern-not: $EL.innerHTML = "..."
+      - pattern-not: $EL.outerHTML = "..."
+      - pattern-not: document.write("...")
+      - pattern-not: document.writeln("...")
+      - pattern-not: $EL.insertAdjacentHTML($POS, "...")
+
+  - id: waypoint-ts-sql-template-injection
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      SQL query built from a template literal with interpolation. Agent: are any of
+      the interpolated values attacker-controlled, and should this be a parameterized
+      query (SQL injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "interpolated SQL template — is an interpolated value untrusted (SQL injection)?"
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query(`...${...}...`)
+          - pattern: $DB.execute(`...${...}...`)
+          - pattern: knex.raw(`...${...}...`)
+          - pattern: $X.raw(`...${...}...`)
+          - pattern: sequelize.query(`...${...}...`)
+
+  - id: waypoint-ts-open-redirect
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Navigation/redirect target is non-literal (window.location / location.assign /
+      res.redirect). Agent: is the destination derived from user input without an
+      allowlist (open redirect)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "non-literal redirect/location target — open redirect from user input?"
+    patterns:
+      - pattern-either:
+          - pattern: window.location = $X
+          - pattern: window.location.href = $X
+          - pattern: location.href = $X
+          - pattern: location.assign($X)
+          - pattern: location.replace($X)
+          - pattern: window.location.assign($X)
+          - pattern: window.location.replace($X)
+          - pattern: $RES.redirect($X)
+      - pattern-not: window.location = "..."
+      - pattern-not: window.location.href = "..."
+      - pattern-not: location.href = "..."
+      - pattern-not: location.assign("...")
+      - pattern-not: location.replace("...")
+      - pattern-not: window.location.assign("...")
+      - pattern-not: window.location.replace("...")
+      - pattern-not: $RES.redirect("...")
+      - pattern-not: $RES.redirect($CODE, "...")
+
+  - id: waypoint-ts-child-process-shell
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      spawn/execFile invoked with shell:true turns arguments into a shell command line.
+      Agent: is the command or any argument attacker-controlled (command injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "spawn/execFile with shell:true — command injection via shell metacharacters?"
+    patterns:
+      - pattern-either:
+          - pattern: "spawn($CMD, ..., {..., shell: true, ...}, ...)"
+          - pattern: "spawn($CMD, ..., {shell: true}, ...)"
+          - pattern: "spawnSync($CMD, ..., {..., shell: true, ...}, ...)"
+          - pattern: "spawnSync($CMD, ..., {shell: true}, ...)"
+          - pattern: "execFile($CMD, ..., {..., shell: true, ...}, ...)"
+          - pattern: "execFile($CMD, ..., {shell: true}, ...)"
+          - pattern: "execFileSync($CMD, ..., {..., shell: true, ...}, ...)"
+          - pattern: "execFileSync($CMD, ..., {shell: true}, ...)"
+          - pattern: "$CP.spawn($CMD, ..., {..., shell: true, ...}, ...)"
+          - pattern: "$CP.spawn($CMD, ..., {shell: true}, ...)"
+          - pattern: "$CP.execFile($CMD, ..., {..., shell: true, ...}, ...)"
+          - pattern: "$CP.execFile($CMD, ..., {shell: true}, ...)"
+
+  - id: waypoint-ts-fs-path-traversal
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Filesystem path argument is non-literal. Agent: is this path built from user
+      input without normalization/containment (path traversal / arbitrary file
+      read or write)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "non-literal fs path — path traversal from user-controlled path?"
+    patterns:
+      - pattern-either:
+          - pattern: fs.readFile($P, ...)
+          - pattern: fs.readFileSync($P, ...)
+          - pattern: fs.readFileSync($P)
+          - pattern: fs.createReadStream($P, ...)
+          - pattern: fs.createReadStream($P)
+          - pattern: fs.writeFile($P, ...)
+          - pattern: fs.writeFileSync($P, ...)
+          - pattern: fs.createWriteStream($P, ...)
+          - pattern: fs.createWriteStream($P)
+      - pattern-not: fs.readFile("...", ...)
+      - pattern-not: fs.readFileSync("...", ...)
+      - pattern-not: fs.readFileSync("...")
+      - pattern-not: fs.createReadStream("...", ...)
+      - pattern-not: fs.createReadStream("...")
+      - pattern-not: fs.writeFile("...", ...)
+      - pattern-not: fs.writeFileSync("...", ...)
+      - pattern-not: fs.createWriteStream("...", ...)
+      - pattern-not: fs.createWriteStream("...")
+
+  - id: waypoint-ts-weak-jwt
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      JWT verification disabled or bypassed (algorithm "none", or jwt.decode used in
+      lieu of verify). Agent: is this token trusted for auth without a real signature
+      check (auth bypass / token forgery)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "JWT alg none or decode-as-verify — signature not enforced (auth bypass)?"
+    patterns:
+      - pattern-either:
+          - pattern: 'jwt.verify(..., {algorithms: ["none"]})'
+          - pattern: 'jwt.verify(..., {..., algorithms: ["none"], ...})'
+          - pattern: 'jwt.verify(..., {..., algorithms: [..., "none", ...], ...})'
+          - pattern: 'jwt.sign(..., {algorithm: "none"})'
+          - pattern: 'jwt.sign(..., {..., algorithm: "none", ...})'
+          - pattern: jwt.decode(...)
+          # $JWT.decode(...) must be constrained — a bare `$X.decode(...)` matches
+          # any decoder (e.g. TextDecoder.decode()), a false "auth bypass" at
+          # ERROR severity. Require the receiver to name a JWT library/object.
+          - patterns:
+              - pattern: $JWT.decode(...)
+              - metavariable-regex:
+                  metavariable: $JWT
+                  regex: '(?i)(jwt|jsonwebtoken|jose)'
+
+  - id: waypoint-ts-hardcoded-secret
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A credential-named constant is assigned a hardcoded string literal. Agent: is
+      this a real embedded secret (key/password/token) that should come from a secret
+      store or env var?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "credential-named var assigned a string literal — hardcoded secret?"
+    patterns:
+      - pattern-either:
+          - pattern: const $N = "..."
+          - pattern: let $N = "..."
+          - pattern: var $N = "..."
+      - metavariable-regex:
+          metavariable: $N
+          regex: '(?i)^.*(password|passwd|secret|api[_-]?key|apikey|access[_-]?key|secret[_-]?key|auth[_-]?token|access[_-]?token|token)$'
+      - metavariable-regex:
+          metavariable: $N
+          regex: '(?i)^(?!.*(hash|hasher|hashed|length|regex|pattern|prompt|label|header|placeholder|expiry|expiration)).*$'
+
+  - id: waypoint-ts-postmessage-origin
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Cross-window postMessage with wildcard target, or a message listener (origin
+      not necessarily checked). Agent: is the target origin too broad, or is event.origin
+      validated before trusting event.data?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "postMessage('*') / message listener — origin unchecked (data injection)?"
+    patterns:
+      - pattern-either:
+          - pattern: $W.postMessage($X, "*")
+          - pattern: postMessage($X, "*")
+          - pattern: 'addEventListener("message", $H)'
+          - pattern: '$W.addEventListener("message", $H)'
+
+  - id: waypoint-ts-proto-pollution-merge
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Untrusted JSON merged into an object via Object.assign. Agent: can a __proto__ /
+      constructor key in the parsed input pollute the prototype chain (prototype
+      pollution)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "Object.assign over JSON.parse — prototype pollution via __proto__ key?"
+    patterns:
+      - pattern-either:
+          - pattern: Object.assign($T, JSON.parse($X))
+          - pattern: Object.assign($T, ..., JSON.parse($X), ...)
+          - pattern: Object.assign($T, $MERGE(JSON.parse($X)))

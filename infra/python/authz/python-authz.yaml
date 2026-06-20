@@ -1,0 +1,104 @@
+# Waypoint authz / access-control rules — Python (OWASP A01 Broken Access Control).
+# The hardest axis to pattern, so these target the pattern-CATCHABLE cases:
+# unauthenticated routes, mass-assignment over-binding, and privilege fields set
+# straight from request input. Net-new (idor-lookup-by-id / django-csrf-exempt /
+# jwt-verify-disabled already live under security).
+rules:
+  - id: waypoint-py-authz-route-no-auth
+    languages: [python]
+    severity: WARNING
+    message: >
+      Flask route handler with no recognizable auth decorator. Agent: confirm this
+      endpoint is intentionally public; otherwise it is missing authentication /
+      authorization (broken access control).
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "route handler has no auth decorator (@login_required/@jwt_required/…) — unauthenticated endpoint?"
+    patterns:
+      - pattern: |
+          @$APP.route(...)
+          def $F(...):
+            ...
+      - pattern-not: |
+          @login_required
+          @$APP.route(...)
+          def $F(...):
+            ...
+      - pattern-not: |
+          @login_required(...)
+          @$APP.route(...)
+          def $F(...):
+            ...
+      - pattern-not: |
+          @jwt_required
+          @$APP.route(...)
+          def $F(...):
+            ...
+      - pattern-not: |
+          @jwt_required(...)
+          @$APP.route(...)
+          def $F(...):
+            ...
+      - pattern-not: |
+          @requires_auth
+          @$APP.route(...)
+          def $F(...):
+            ...
+      - pattern-not: |
+          @permission_required(...)
+          @$APP.route(...)
+          def $F(...):
+            ...
+      - pattern-not: |
+          @requires_roles(...)
+          @$APP.route(...)
+          def $F(...):
+            ...
+
+  - id: waypoint-py-authz-mass-assignment
+    languages: [python]
+    severity: WARNING
+    message: >
+      Request body splatted straight into a model/object constructor. Agent: an
+      attacker can set fields you never intended (e.g. is_admin) — mass assignment.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "untrusted request body **-splatted into a constructor — mass assignment / privilege escalation via unexpected fields?"
+    patterns:
+      - pattern-either:
+          - pattern: $M(**request.get_json(...))
+          - pattern: $M(**request.json)
+          - pattern: $M(**request.form)
+          - pattern: $M(**request.data)
+          - pattern: $M(**request.values)
+          - pattern: $M(**request.json())
+
+  - id: waypoint-py-authz-privilege-from-request
+    languages: [python]
+    severity: ERROR
+    message: >
+      A privilege/role field is assigned directly from request input. Agent: this
+      lets a caller grant themselves privileges — confirm server-side authorization.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "privilege field (is_admin/role/permissions/…) set from request input — privilege escalation?"
+    patterns:
+      - pattern-either:
+          - pattern: $U.is_admin = $RHS
+          - pattern: $U.is_staff = $RHS
+          - pattern: $U.is_superuser = $RHS
+          - pattern: $U.role = $RHS
+          - pattern: $U.roles = $RHS
+          - pattern: $U.permissions = $RHS
+      - metavariable-pattern:
+          metavariable: $RHS
+          patterns:
+            - pattern-either:
+                - pattern: request.$X
+                - pattern: request.$X[...]
+                - pattern: request.$X.get(...)
+                - pattern: request.$X(...)
+                - pattern: request.$X(...)[...]

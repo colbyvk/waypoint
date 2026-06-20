@@ -1,0 +1,54 @@
+# Waypoint hardening rules — TypeScript concurrency (proxy detectors; optimize for recall).
+# New shapes only; does NOT duplicate promise-all-race already in typescript.yaml.
+rules:
+  - id: waypoint-ts-timer-leak
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Recurring timer: setInterval, or a setTimeout that re-schedules itself. Agent:
+      is the handle ever cleared, and can ticks overlap or pile up if the work is
+      slower than the interval (leak / overlapping runs)?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "setInterval / self-rescheduling setTimeout — handle never cleared or ticks overlap?"
+    patterns:
+      - pattern-either:
+          - pattern: setInterval(...)
+          - pattern: $W.setInterval(...)
+          - pattern: "setTimeout(() => { ... setTimeout(...); ... }, ...)"
+          - pattern: "setTimeout(function() { ... setTimeout(...); ... }, ...)"
+          - pattern: "setTimeout(function $G() { ... setTimeout(...); ... }, ...)"
+
+  - id: waypoint-ts-shared-mutable-async
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Module-level mutable state is reassigned or mutated inside an async function.
+      Agent: can concurrent invocations interleave around an await and corrupt this
+      shared state (data race)?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "shared module-level state mutated in async fn — interleaving race across awaits?"
+    patterns:
+      - pattern-either:
+          - pattern-inside: "async function $F(...) { ... }"
+          - pattern-inside: "async ($PARAMS) => { ... }"
+          - pattern-inside: "$OBJ = async ($PARAMS) => { ... }"
+          - pattern-inside: "async $M(...) { ... }"
+      # NOTE: a bare `$V = $E` was removed here — inside an async body it matches
+      # every local declaration/reassignment (`const x = …`, `reader = …`), which
+      # is overwhelmingly local state, not shared (measured: 60+ false positives on
+      # one real HTTP client). Compound-assign / in-place mutation are far stronger
+      # signals of an accumulator mutated across awaits.
+      - pattern-either:
+          - pattern: $V += $E
+          - pattern: $V -= $E
+          - pattern: $V++
+          - pattern: $V--
+          - pattern: $V.push(...)
+          - pattern: $V.pop(...)
+          - pattern: $V.splice(...)
+          - pattern: $V.shift(...)
+          - pattern: $V.unshift(...)

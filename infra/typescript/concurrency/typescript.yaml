@@ -1,0 +1,18 @@
+# Waypoint concurrency-proxy rules — TypeScript (language-general; spec §6.3)
+rules:
+  # concurrency-present marker: Promise.all/race over operations
+  - id: waypoint-ts-promise-all-race
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Promise.all/race over multiple operations. Agent: do any of these write
+      shared state (array/object/module singleton) and race each other?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "Promise.all/race over concurrent ops — shared-state write race?"
+    patterns:
+      - pattern-either:
+          - pattern: Promise.all(...)
+          - pattern: Promise.race(...)
+          - pattern: Promise.allSettled(...)

@@ -1,0 +1,11 @@
+INFO: Running with entropic power schedule (0xFF, 100).
+INFO: Seed: 2468013579
+#2	INITED cov: 12 ft: 13 corp: 1/1b exec/s: 0 rss: 33Mb
+
+==ERROR== Uncaught Exception: Jazzer.js: Error: amount must be positive
+    at parseAmount (src/money.ts:14:11)
+    at fuzz (money.fuzz.ts:6:5)
+    at result (/node_modules/@jazzer.js/core/dist/core.js:123:7)
+
+artifact_prefix='./'; Test unit written to ./crash-deadbeef
+Base64: LTE=

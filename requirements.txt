@@ -1,0 +1,25 @@
+# Waypoint detector toolchain + custom-script dependencies.
+# PINNED (==) for reproducible, supply-chain-stable installs. Installed by
+# detectors/install.sh:   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+# Bump deliberately. (For maximum integrity, regenerate with hashes via
+# `pip-compile --generate-hashes` and install with `pip install --require-hashes`.)
+# These are off-the-shelf scanners (spec §13: install, do not reimplement).
+
+# --- core scanners (the fast tier) ---
+semgrep==1.166.0      # primary pattern matcher; runs the custom Waypoint rules
+ruff==0.15.17         # fast Python correctness / edge-case / async / security lints
+bandit==1.9.4         # Python security shapes
+mypy==2.1.0           # type holes / None-deref / correctness surfaces
+pip-audit==2.10.1     # Python dependency CVEs
+
+# --- custom scripts + test runner ---
+pyyaml==6.0.3         # the only dep of merge/rank/suppress/dispatch/sariflib
+pytest==9.1.0         # bin/waypoint --test
+
+# --- agent integration (the MCP server: integrations/mcp/waypoint_mcp.py) ---
+mcp==1.23.3           # lets any MCP agent (Claude/Cursor/Gemini/Codex) drive Waypoint
+
+# --- optional, per-lane (install manually if you use them) ---
+# hypothesis==6.x     # property-based testing (the --logic lane)
+# atheris==2.x        # Python fuzzing (the --logic lane)
+# anthropic==0.x      # dispatch 'anthropic-api' backend

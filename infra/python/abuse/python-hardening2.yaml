@@ -1,0 +1,48 @@
+# Waypoint hardening2 rules — Python / abuse (proxy detectors; recall-biased).
+# NEW shapes only. Does NOT duplicate unbounded-read / input-driven-alloc
+# (python-hardening.yaml) or the lxml/etree XXE rule (python-hardening.yaml).
+# Covers minidom entity expansion and decompression bombs.
+rules:
+  - id: waypoint-py-minidom-entity-expansion
+    languages: [python]
+    severity: WARNING
+    message: >
+      xml.dom.minidom / expat parsing of input with no entity limits is
+      vulnerable to entity-expansion (billion-laughs) DoS. Agent: is the XML
+      source untrusted and unbounded entity expansion possible? Use defusedxml.
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse, security]
+      waypoint_hypothesis: "minidom/expat parse of untrusted XML with no entity cap — billion-laughs expansion DoS?"
+    patterns:
+      - pattern-either:
+          - pattern: xml.dom.minidom.parseString(...)
+          - pattern: xml.dom.minidom.parse(...)
+          - pattern: minidom.parseString(...)
+          - pattern: minidom.parse(...)
+          - pattern: xml.dom.pulldom.parseString(...)
+          - pattern: xml.sax.parseString(...)
+
+  - id: waypoint-py-decompression-bomb
+    languages: [python]
+    severity: WARNING
+    message: >
+      Untrusted compressed data decompressed with no output-size cap. Agent: can
+      a small malicious archive expand to exhaust memory/disk (decompression
+      bomb)? Bound the decompressed size.
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "zlib/gzip/bz2/lzma/zipfile decompress of untrusted bytes with no size cap — decompression bomb?"
+    patterns:
+      - pattern-either:
+          - pattern: zlib.decompress($X)
+          - pattern: gzip.decompress($X)
+          - pattern: bz2.decompress($X)
+          - pattern: lzma.decompress($X)
+          - pattern: gzip.open(...).read()
+          - pattern: $Z.read($NAME)
+          - pattern: zipfile.ZipFile(...).read($NAME)
+      - pattern-not: zlib.decompress("...")
+      - pattern-not: gzip.decompress("...")
+      - pattern-not: $Z.read($NAME, $SIZE)

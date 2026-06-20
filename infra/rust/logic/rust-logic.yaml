@@ -1,0 +1,36 @@
+# Waypoint logic-smell rules — Rust (static correctness).
+# A small set of pattern-catchable logic smells; the heavier correctness net for
+# Rust is clippy::correctness (wired in the strict-type amplifier lane). Net-new:
+# panic/unwrap/index rules already live under edge-case.
+rules:
+  - id: waypoint-rust-logic-self-comparison
+    languages: [rust]
+    severity: WARNING
+    message: >
+      A value is compared to itself (constant true/false, save the `x != x` NaN
+      idiom). Agent: confirm this isn't a typo for a different operand.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "self-comparison ($X == $X / != $X) is constant — likely a typo for a different operand?"
+    patterns:
+      - pattern-either:
+          - pattern: $X == $X
+          - pattern: $X != $X
+
+  - id: waypoint-rust-logic-bool-literal-compare
+    languages: [rust]
+    severity: INFO
+    message: >
+      Comparing a bool to a bool literal (`== true` / `== false`) is redundant and
+      a common source of inverted logic. Agent: confirm the condition's polarity.
+    metadata:
+      category: logic
+      waypoint_axes: [logic]
+      waypoint_hypothesis: "bool compared to a literal (== true / == false) — redundant; check the condition isn't inverted."
+    patterns:
+      - pattern-either:
+          - pattern: $X == true
+          - pattern: $X == false
+          - pattern: $X != true
+          - pattern: $X != false

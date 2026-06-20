@@ -1,0 +1,45 @@
+# Waypoint hardening2 rules — TypeScript / edge-case (proxy detectors; recall-biased).
+# NEW shapes only; does NOT duplicate empty-catch / non-null-assertion
+# (typescript.yaml) or loose-equality / json-parse-no-try (typescript-hardening.yaml).
+rules:
+  - id: waypoint-ts-unhandled-promise
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A promise chain ends in .then(...) with no .catch(...) (and is not awaited).
+      Agent: if the promise rejects, is the error handled, or does it become an
+      unhandled rejection that can crash the process / swallow the failure?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: ".then() with no .catch and not awaited — unhandled rejection on the error path?"
+    patterns:
+      - pattern-either:
+          - pattern: $P.then($CB)
+          - pattern: $P.then($OK, $ERR)
+      # a .then() that is part of a chain ending in .catch is handled
+      - pattern-not-inside: $X.catch(...)
+      - pattern-not-inside: $X.finally(...)
+      - pattern-not-inside: await $X
+      - pattern-not-inside: return $X
+      - pattern-not-inside: $V = $X
+
+  - id: waypoint-ts-unguarded-computed-index
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Array/collection accessed via a computed index, then a property is read off
+      the result. Agent: can the index be out of range so the element is undefined
+      and the property read throws (TypeError on undefined)?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "arr[computedIndex].prop — index out of range yields undefined, property read throws?"
+    patterns:
+      - pattern-either:
+          - pattern: $ARR[$I].$PROP
+          - pattern: $ARR[$I][$J]
+      - metavariable-regex:
+          metavariable: $I
+          # only computed (non-numeric-literal, non-string-literal) indices
+          regex: '^(?!\d+$)(?![`"'']).+'

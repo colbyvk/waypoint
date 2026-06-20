@@ -1,0 +1,49 @@
+# Waypoint TAINT rules — Rust (dataflow, not shape). `mode: taint`: fires only
+# when untrusted input (env vars, CLI args) flows into a sink. Rust has no
+# universal web-request object, so sources are env/args (the portable ones).
+rules:
+  - id: waypoint-rust-taint-command
+    languages: [rust]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input (env/args) flows into a process command argument. Agent:
+      confirm command injection along this flow.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "tainted env/args reaches a Command argument — command injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: std::env::var(...)
+          - pattern: env::var(...)
+          - pattern: std::env::args()
+          - pattern: env::args()
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $C.arg($X)
+          - pattern: $C.args($X)
+
+  - id: waypoint-rust-taint-sql
+    languages: [rust]
+    severity: ERROR
+    mode: taint
+    message: >
+      Untrusted input (env/args) flows into a SQL query. Agent: confirm injection
+      along this flow.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "tainted env/args reaches a SQL query — injection along this dataflow?"
+    pattern-sources:
+      - pattern-either:
+          - pattern: std::env::var(...)
+          - pattern: env::var(...)
+          - pattern: std::env::args()
+          - pattern: env::args()
+    pattern-sinks:
+      - pattern-either:
+          - pattern: sqlx::query($Q)
+          - pattern: $C.execute($Q)
+          - pattern: $C.query($Q)
+          - pattern: diesel::sql_query($Q)

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# ============================================================================
+# waypoint-sandboxed — run Waypoint on UNTRUSTED code inside a locked-down
+# container. The dynamic lanes (--logic/--deep) execute the scanned code, so for
+# code you don't trust, run them HERE: no network, read-only source, non-root,
+# all capabilities dropped, ephemeral container.
+#
+#   bin/waypoint-sandboxed <dir> [waypoint flags...]
+#   bin/waypoint-sandboxed /path/to/repo --deep        # safe deep scan of untrusted code
+#
+# Results are copied to reports/sandboxed/ (override with WAYPOINT_OUT).
+# ============================================================================
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${WAYPOINT_IMAGE:-waypoint:local}"
+
+command -v docker >/dev/null 2>&1 || { echo "waypoint-sandboxed: docker is required" >&2; exit 1; }
+TARGET="${1:-}"; [ $# -gt 0 ] && shift || true
+[ -n "$TARGET" ] && [ -d "$TARGET" ] || { echo "usage: bin/waypoint-sandboxed <dir> [waypoint flags]" >&2; exit 2; }
+TARGET="$(cd "$TARGET" && pwd)"
+OUT="${WAYPOINT_OUT:-$ROOT/reports/sandboxed}"; mkdir -p "$OUT"
+
+docker image inspect "$IMAGE" >/dev/null 2>&1 || { echo "[sandbox] building $IMAGE (one-time) …"; docker build -t "$IMAGE" "$ROOT"; }
+
+echo "[sandbox] scanning $TARGET  —  no network · read-only source · non-root · caps dropped"
+# create (not run) so we can copy results out before removing the ephemeral container.
+cid="$(docker create \
+    --network none \
+    --cap-drop ALL --security-opt no-new-privileges \
+    --pids-limit 512 --memory 4g \
+    --tmpfs /tmp:rw,exec,nosuid,size=1g \
+    -v "$TARGET":/scan:ro \
+    "$IMAGE" /scan "$@")"
+set +e
+docker start -a "$cid"; rc=$?
+set -e
+docker cp "$cid:/app/beacons/." "$OUT/" >/dev/null 2>&1 || true
+docker cp "$cid:/app/reports/ranked.sarif" "$OUT/ranked.sarif" >/dev/null 2>&1 || true
+docker rm -f "$cid" >/dev/null 2>&1 || true
+echo "[sandbox] done (exit $rc) — results in $(realpath --relative-to="$PWD" "$OUT" 2>/dev/null || echo "$OUT")"
+exit $rc

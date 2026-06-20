@@ -1,0 +1,46 @@
+# Waypoint hardening rules — Rust / concurrency (proxy detectors; recall-biased)
+# NEW shapes only; does not duplicate Arc/Mutex/spawn primitive marker.
+rules:
+  - id: waypoint-rust-lock-across-await
+    languages: [rust]
+    severity: WARNING
+    message: >
+      A lock guard is acquired inside an async body that also awaits. Agent:
+      can the guard be held across an `.await`, causing deadlock or blocking
+      the executor?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "lock().unwrap()/lock().await inside async fn with awaits — is a guard held across an await point (deadlock)?"
+    patterns:
+      - pattern-either:
+          - pattern: $M.lock().unwrap()
+          - pattern: $M.lock().await
+          - pattern: $M.write().await
+          - pattern: $M.read().await
+      - pattern-either:
+          - pattern-inside: "async fn $F(...) -> $R { ... }"
+          - pattern-inside: "async fn $F(...) { ... }"
+          - pattern-inside: "async move { ... }"
+          - pattern-inside: "async { ... }"
+      - pattern-inside: "{ ...; $E.await; ... }"
+
+  - id: waypoint-rust-rc-near-spawn
+    languages: [rust]
+    severity: INFO
+    message: >
+      An `Rc` is constructed in a function that also spawns a thread. Agent: is
+      a non-thread-safe `Rc` shared into the spawned thread (should be `Arc`)?
+    metadata:
+      category: concurrency
+      waypoint_axes: [concurrency]
+      waypoint_hypothesis: "Rc::new near thread::spawn — is a non-Send Rc moved across a thread boundary?"
+    patterns:
+      - pattern: Rc::new(...)
+      - pattern-either:
+          - pattern-inside: "fn $FN(...) -> $R { ... }"
+          - pattern-inside: "fn $FN(...) { ... }"
+      - pattern-either:
+          - pattern-inside: "{ ...; thread::spawn(...); ... }"
+          - pattern-inside: "{ ...; std::thread::spawn(...); ... }"
+          - pattern-inside: "{ ...; tokio::spawn(...); ... }"

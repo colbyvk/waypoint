@@ -1,0 +1,92 @@
+# Waypoint house security rules — Python (spec §3.2.1)
+# These work even in a Semgrep-only stance (no Bandit). Where Bandit also fires,
+# merge_sarif dedups the overlapping region into one multi-tagged beacon.
+rules:
+  - id: waypoint-py-sql-string-build
+    languages: [python]
+    severity: ERROR
+    message: >
+      SQL built by string interpolation/concatenation reaches execute(). Agent:
+      does untrusted input reach this query unparametrized (SQL injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "string-built SQL into execute() — injection if input is untrusted?"
+    patterns:
+      - pattern-either:
+          - pattern: $CUR.execute(f"...", ...)
+          - pattern: $CUR.execute(f"...")
+          - pattern: $CUR.execute("..." % ..., ...)
+          - pattern: $CUR.execute("..." % ...)
+          - pattern: $CUR.execute("..." + ..., ...)
+          - pattern: $CUR.execute("..." + ...)
+          - pattern: $CUR.executemany(f"...", ...)
+
+  - id: waypoint-py-eval-exec
+    languages: [python]
+    severity: ERROR
+    message: >
+      eval()/exec() on a non-constant value. Agent: can attacker-controlled
+      input reach this (arbitrary code execution)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "eval/exec on a non-literal — attacker-controlled input reachable?"
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+      # exclude eval/exec of a plain string/number literal (rarely interesting)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+      - pattern-not: eval()
+      - pattern-not: exec()
+
+  - id: waypoint-py-subprocess-shell
+    languages: [python]
+    severity: WARNING
+    message: >
+      Shell invocation (shell=True / os.system). Agent: is any argument
+      attacker-controlled (command injection)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "shell=True / os.system — command injection if argument is untrusted?"
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.check_output(..., shell=True, ...)
+          - pattern: os.system($X)
+
+  - id: waypoint-py-tls-verify-disabled
+    languages: [python]
+    severity: WARNING
+    message: >
+      TLS certificate verification disabled. Agent: confirm MITM exposure on
+      this request path.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "verify=False / unverified TLS context — MITM exposure?"
+    patterns:
+      - pattern-either:
+          - pattern: requests.$M(..., verify=False, ...)
+          - pattern: ssl._create_unverified_context(...)
+          - pattern: ssl._create_unverified_context
+
+  - id: waypoint-py-path-traversal
+    languages: [python]
+    severity: WARNING
+    message: >
+      File path built by join with a possibly-untrusted segment. Agent: can a
+      user value escape the intended directory (path traversal)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "open(join(base, user)) with no containment check — path traversal?"
+    patterns:
+      - pattern-either:
+          - pattern: open(os.path.join(...), ...)
+          - pattern: open(os.path.join(...))

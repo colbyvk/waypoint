@@ -1,0 +1,44 @@
+# Waypoint hardening rules — Rust / abuse (proxy detectors; recall-biased)
+# Memory-amplification and unbounded-read shapes driven by attacker input.
+rules:
+  - id: waypoint-rust-alloc-from-size
+    languages: [rust]
+    severity: WARNING
+    message: >
+      Allocation sized by a non-literal value (`with_capacity`/`reserve`).
+      Agent: can the size be attacker-controlled and unbounded
+      (memory-amplification DoS)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "Vec::with_capacity/reserve with a variable size — is the size attacker-controlled and unbounded?"
+    patterns:
+      - pattern-either:
+          - pattern: Vec::with_capacity($N)
+          - pattern: $V.reserve($N)
+          - pattern: $V.reserve_exact($N)
+          - pattern: String::with_capacity($N)
+          - pattern: HashMap::with_capacity($N)
+      - metavariable-pattern:
+          metavariable: $N
+          patterns:
+            - pattern-not-regex: ^[0-9]
+
+  - id: waypoint-rust-read-unbounded
+    languages: [rust]
+    severity: WARNING
+    message: >
+      `read_to_end`/`read_to_string` reads an entire stream with no size cap.
+      Agent: is the source attacker-controlled (unbounded read -> memory
+      exhaustion)? Prefer `take(limit)`.
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse]
+      waypoint_hypothesis: "read_to_end/read_to_string on input — is the source unbounded/attacker-controlled (memory DoS)?"
+    patterns:
+      - pattern-either:
+          - pattern: $R.read_to_end(...)
+          - pattern: $R.read_to_string(...)
+          - pattern: std::fs::read_to_string(...)
+          - pattern: fs::read_to_string(...)
+          - pattern: std::fs::read(...)

@@ -1,0 +1,93 @@
+# Waypoint hardening rules — Python / edge-case
+# NEW proxy detectors. These do NOT duplicate python.yaml (bare-except,
+# except…: pass already covered there).
+rules:
+  - id: waypoint-py-mutable-default-arg
+    languages: [python]
+    severity: WARNING
+    message: >
+      Mutable default argument is shared across all calls and persists mutations
+      between invocations. Agent: is this default mutated, leaking state across
+      calls?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "mutable default arg ([]/{}/dict()/list()/set()) — state leaking across calls if mutated?"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              def $F(..., $A=[], ...):
+                ...
+          - pattern: |
+              def $F(..., $A={}, ...):
+                ...
+          - pattern: |
+              def $F(..., $A=dict(), ...):
+                ...
+          - pattern: |
+              def $F(..., $A=list(), ...):
+                ...
+          - pattern: |
+              def $F(..., $A=set(), ...):
+                ...
+
+  - id: waypoint-py-request-no-timeout
+    languages: [python]
+    severity: WARNING
+    message: >
+      Outbound HTTP request with no timeout= will block indefinitely if the peer
+      stalls. Agent: confirm a hang/resource-exhaustion risk on this call path.
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case, abuse]
+      waypoint_hypothesis: "requests.* without timeout= — indefinite hang / resource exhaustion on a slow peer?"
+    patterns:
+      - pattern-either:
+          - pattern: requests.get(...)
+          - pattern: requests.post(...)
+          - pattern: requests.put(...)
+          - pattern: requests.delete(...)
+          - pattern: requests.head(...)
+          - pattern: requests.patch(...)
+          - pattern: requests.options(...)
+          - pattern: requests.request(...)
+      - pattern-not: requests.$M(..., timeout=$T)
+      - pattern-not: requests.$M(..., timeout=$T, ...)
+
+  - id: waypoint-py-assert-validation
+    languages: [python]
+    severity: INFO
+    message: >
+      `assert` used for runtime validation is stripped under `python -O`, so the
+      check silently disappears in optimized builds. Agent: is this assert
+      enforcing security or input validation that must always run?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case, security]
+      waypoint_hypothesis: "assert as a validation gate — bypassed under -O, leaving the check unenforced?"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              assert $X
+          - pattern: |
+              assert $X, $MSG
+
+  - id: waypoint-py-open-without-with
+    languages: [python]
+    severity: INFO
+    message: >
+      File opened without a `with` block (or assignment to a managed handle) may
+      leak the descriptor if an exception fires before close(). Agent: is this
+      handle reliably closed on every path?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "open() outside a with-block — descriptor leak if close() is skipped on error?"
+    patterns:
+      - pattern: $F = open(...)
+      - pattern-not-inside: |
+          with open(...) as $G:
+            ...
+      - pattern-not-inside: |
+          with ...:
+            ...

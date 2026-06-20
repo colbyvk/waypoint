@@ -1,0 +1,143 @@
+# ============================================================================
+# Tag map  —  off-the-shelf rule id  ->  Waypoint axes + agent hypothesis
+# ----------------------------------------------------------------------------
+# Our own Semgrep rules (infra/**) carry their axes and hypothesis in
+# rule metadata, so they do NOT need an entry here. Every OTHER detector
+# (Bandit, Ruff, mypy, Clippy, gitleaks, Trivy, ...) emits rule ids that mean
+# nothing to Waypoint until this file gives them an axis and frames a question
+# for the agent. merge_sarif.py reads this and writes the result into each
+# beacon's properties bag.
+#
+# Matching: within a tool block, the first rule whose `match` (fnmatch glob,
+# case-insensitive, tested against the SARIF ruleId) matches wins. If no rule
+# matches, the tool's `_default` is used. Hypotheses may use placeholders:
+#   {symbol} {file} {line} {rule} {message}
+# ============================================================================
+
+# Fallback axis when a tool is not listed here at all.
+_global_default:
+  axes: [edge-case]
+  hypothesis: "Detector {rule} fired in {symbol} ({file}:{line}). Confirm whether this is a real defect or a false positive."
+
+tools:
+
+  # ----- Bandit: Python security shapes (rule ids look like B602, B608, ...) -
+  bandit:
+    _default: { axes: [security], hypothesis: "Bandit {rule} flagged a security shape in {symbol}. Confirm exploitability given how this code is reached." }
+    rules:
+      - { match: "B102", axes: [security], hypothesis: "exec() on a non-constant value in {symbol} — can attacker-controlled input reach it?" }
+      - { match: "B307", axes: [security], hypothesis: "eval() on a non-constant value in {symbol} — can attacker-controlled input reach it?" }
+      # B608 must precede the B60* wildcard (first match wins).
+      - { match: "B608", axes: [security, abuse], hypothesis: "SQL built by string ops in {symbol} — does user input reach this query unparametrized (injection)?" }
+      - { match: "B60*", axes: [security], hypothesis: "subprocess/shell invocation in {symbol} — is any argument attacker-controlled (command injection)?" }
+      - { match: "B501", axes: [security], hypothesis: "TLS certificate validation disabled near {symbol} — MITM exposure on this request?" }
+      - { match: "B10[567]", axes: [security], hypothesis: "Possible hardcoded credential in {symbol} — is this a live secret?" }
+      - { match: "B11[02]", axes: [edge-case], hypothesis: "try/except swallows the error in {symbol} — what failure is being hidden?" }
+      - { match: "B30[12]", axes: [security], hypothesis: "Unpickling untrusted data in {symbol} — deserialization RCE?" }
+
+  # ----- Ruff: correctness + flake8-bandit (S*) + bugbear (B*) + async ---------
+  ruff:
+    _default: { axes: [edge-case], hypothesis: "Ruff {rule} in {symbol} — confirm whether this is a real correctness issue." }
+    rules:
+      - { match: "S307", axes: [security], hypothesis: "eval-like call in {symbol} — attacker-controlled input?" }
+      # S608 must precede the S60* wildcard (first match wins).
+      - { match: "S608", axes: [security, abuse], hypothesis: "string-built SQL in {symbol} — injection via unparametrized user input?" }
+      - { match: "S60*", axes: [security], hypothesis: "subprocess/shell in {symbol} — command injection via user input?" }
+      - { match: "S501", axes: [security], hypothesis: "TLS verification disabled in {symbol} — MITM exposure?" }
+      - { match: "S105", axes: [security], hypothesis: "possible hardcoded secret in {symbol} — live credential?" }
+      - { match: "S106", axes: [security], hypothesis: "possible hardcoded secret passed as argument in {symbol} — live credential?" }
+      - { match: "S110", axes: [edge-case], hypothesis: "try/except/pass in {symbol} — which error is silently dropped?" }
+      - { match: "S112", axes: [edge-case], hypothesis: "try/except/continue in {symbol} — which error is silently dropped?" }
+      - { match: "S311", axes: [security], hypothesis: "non-cryptographic RNG used in {symbol} — is it used for a security decision?" }
+      - { match: "E722", axes: [edge-case], hypothesis: "bare except in {symbol} — what is being swallowed, including KeyboardInterrupt?" }
+      - { match: "ASYNC*", axes: [concurrency], hypothesis: "async hazard {rule} in {symbol} — blocking call or task race inside async code?" }
+      - { match: "B008", axes: [edge-case], hypothesis: "function call in default argument of {symbol} — shared-mutable-default bug?" }
+      - { match: "B904", axes: [edge-case], hypothesis: "raise without from inside except in {symbol} — losing the original cause?" }
+
+  # ----- mypy: type holes / None-deref surfaces ------------------------------
+  mypy:
+    _default: { axes: [edge-case], hypothesis: "mypy: {message} in {symbol} — can this type hole produce a runtime None-deref / attribute error on a real path?" }
+    rules:
+      - { match: "union-attr", axes: [edge-case], hypothesis: "attribute access on an Optional in {symbol} — can it be None at runtime (None-deref)?" }
+      - { match: "arg-type",   axes: [edge-case], hypothesis: "argument type mismatch in {symbol} — real call site that passes the wrong type?" }
+      - { match: "return-value", axes: [edge-case], hypothesis: "return type mismatch in {symbol} — does a caller mishandle the value?" }
+      # correctness flags (--warn-unreachable / --strict-equality / --warn-no-return) → logic
+      - { match: "unreachable", axes: [logic], hypothesis: "mypy proved this code unreachable in {symbol} — dead branch, impossible condition, or an early return/raise bug?" }
+      - { match: "comparison-overlap", axes: [logic], hypothesis: "== / != between non-overlapping types in {symbol} — this comparison is always False; a type-confusion bug?" }
+      - { match: "return", axes: [logic], hypothesis: "a path through {symbol} falls through with no return — does it silently yield None where a value is expected?" }
+
+  # ----- Clippy: Rust correctness + a few concurrency lints -------------------
+  clippy:
+    _default: { axes: [edge-case], hypothesis: "Clippy {rule} in {symbol} — real correctness issue or idiomatic noise?" }
+    rules:
+      - { match: "*unwrap*", axes: [edge-case], hypothesis: ".unwrap() in {symbol} — can the Result/Option actually be Err/None here (panic)?" }
+      - { match: "*expect*", axes: [edge-case], hypothesis: ".expect() in {symbol} — reachable panic on a real input?" }
+      - { match: "*panic*",  axes: [edge-case], hypothesis: "panic! in {symbol} — reachable from untrusted input (DoS)?" }
+      - { match: "*await_holding_lock*", axes: [concurrency], hypothesis: "lock held across .await in {symbol} — deadlock / contention across tasks?" }
+      - { match: "*await_holding_refcell*", axes: [concurrency], hypothesis: "RefCell ref held across .await in {symbol} — borrow panic across tasks?" }
+      - { match: "*mutex_atomic*", axes: [concurrency], hypothesis: "Mutex guarding a primitive in {symbol} — atomics intended; check the locking discipline." }
+      - { match: "*integer_arithmetic*", axes: [abuse], hypothesis: "unchecked integer arithmetic in {symbol} — overflow on attacker-sized input?" }
+      # correctness/suspicious lints that are genuine logic bugs → logic
+      - { match: "*eq_op*", axes: [logic], hypothesis: "identical operands on both sides of an operator in {symbol} (clippy eq_op) — a typo for a different operand?" }
+      - { match: "*ifs_same_cond*", axes: [logic], hypothesis: "consecutive if/else-if with the same condition in {symbol} — the second branch is dead; wrong condition?" }
+      - { match: "*almost_swapped*", axes: [logic], hypothesis: "looks like a botched swap in {symbol} (clippy almost_swapped) — assignment order wrong?" }
+      - { match: "*absurd_extreme_comparisons*", axes: [logic], hypothesis: "comparison that is always true/false in {symbol} — bound/condition bug?" }
+
+  # ----- cargo-geiger: unsafe density (a direct concurrency/memory signal) ----
+  cargo-geiger:
+    _default: { axes: [concurrency, security], hypothesis: "unsafe code present in {symbol} (cargo-geiger) — does the safety/Send-Sync invariant hold across threads?" }
+
+  # ----- Dependency / advisory scanners: all security (supply chain) ----------
+  cargo-audit:
+    _default: { axes: [security], hypothesis: "RustSec advisory {rule} affects a dependency used near {symbol} — is the vulnerable path actually reachable?" }
+  pip-audit:
+    _default: { axes: [security], hypothesis: "Known CVE {rule} in a Python dependency — is the vulnerable API called from this codebase?" }
+  trivy:
+    _default: { axes: [security], hypothesis: "Trivy reports {rule} in a dependency — confirm reachability and whether a fixed version exists." }
+  osv-scanner:
+    _default: { axes: [security], hypothesis: "OSV advisory {rule} in a dependency — is the vulnerable function actually invoked?" }
+  npm-audit:
+    _default: { axes: [security], hypothesis: "npm advisory {rule} in a dependency — reachable from app code?" }
+
+  # ----- Gitleaks: secrets ----------------------------------------------------
+  gitleaks:
+    _default: { axes: [security], hypothesis: "Possible secret ({rule}) at {file}:{line} — is it live, and is it in git history?" }
+
+  # ----- ESLint stack: security plugin + react-hooks + typescript-eslint ------
+  eslint:
+    _default: { axes: [edge-case], hypothesis: "ESLint {rule} in {symbol} — real correctness issue?" }
+    rules:
+      - { match: "security/detect-eval-with-expression", axes: [security], hypothesis: "eval with a dynamic expression in {symbol} — attacker-controlled input?" }
+      - { match: "security/detect-child-process", axes: [security], hypothesis: "child_process invocation in {symbol} — command injection via user input?" }
+      - { match: "security/detect-non-literal-fs-filename", axes: [security], hypothesis: "fs path built from a variable in {symbol} — path traversal?" }
+      - { match: "security/detect-unsafe-regex", axes: [abuse, security], hypothesis: "regex with catastrophic-backtracking shape in {symbol} — ReDoS on user input?" }
+      - { match: "security/*", axes: [security], hypothesis: "ESLint security rule {rule} in {symbol} — confirm exploitability." }
+      - { match: "react-hooks/exhaustive-deps", axes: [concurrency, edge-case], hypothesis: "incomplete useEffect dependency array in {symbol} — stale-closure / missed-update race?" }
+      - { match: "react-hooks/rules-of-hooks", axes: [edge-case], hypothesis: "conditional hook call in {symbol} — render-order violation?" }
+      - { match: "*no-non-null-assertion*", axes: [edge-case], hypothesis: "non-null assertion (!) in {symbol} — can the value actually be null/undefined here?" }
+      - { match: "*no-floating-promises*", axes: [concurrency, edge-case], hypothesis: "unawaited promise in {symbol} — unhandled rejection / ordering race?" }
+
+  # ----- CodeQL: the cross-file taint tracer (treat paths as high-confidence) --
+  codeql:
+    _default: { axes: [security], hypothesis: "CodeQL {rule} traced a data flow into {symbol} — confirm the source is untrusted and the sink is dangerous along this path." }
+    rules:
+      - { match: "*sql*", axes: [security, abuse], hypothesis: "CodeQL traced tainted data into a SQL sink in {symbol} — confirm injection along the reported path." }
+      - { match: "*path-injection*", axes: [security], hypothesis: "CodeQL traced tainted data into a filesystem path in {symbol} — confirm traversal." }
+      - { match: "*xss*", axes: [security], hypothesis: "CodeQL traced tainted data into an HTML sink in {symbol} — confirm XSS." }
+      - { match: "*command*", axes: [security], hypothesis: "CodeQL traced tainted data into a command sink in {symbol} — confirm injection." }
+
+  # ----- Software-LOGIC testing lane (detectors/run_logic.sh). These normalizers
+  #       self-tag the `logic` axis on each result; these entries document them
+  #       and act as a fallback. -----
+  cargo-mutants:
+    _default: { axes: [logic], hypothesis: "surviving mutant in {symbol} — is this branch untested, or is the logic wrong?" }
+  race-detector:
+    _default: { axes: [logic, concurrency], hypothesis: "runtime data race at {file}:{line} — confirm the unsynchronized shared access and interleaving." }
+  fuzz:
+    _default: { axes: [logic, edge-case], hypothesis: "fuzz-found crash in {symbol} — bound/validate the offending input or handle the case." }
+  hypothesis:
+    _default: { axes: [logic, edge-case], hypothesis: "Hypothesis falsified a property in {symbol} — confirm the code is wrong (not the property); see the shrunk reproducing input." }
+  proptest:
+    _default: { axes: [logic, edge-case], hypothesis: "proptest/quickcheck falsified a property in {symbol} — confirm the code is wrong (not the property); see the minimal failing input." }
+  fast-check:
+    _default: { axes: [logic, edge-case], hypothesis: "fast-check falsified a property in {symbol} — confirm the code is wrong (not the property); see the counterexample." }

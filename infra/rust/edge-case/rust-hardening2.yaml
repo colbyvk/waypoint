@@ -1,0 +1,44 @@
+# Waypoint hardening2 rules — Rust / edge-case (proxy detectors; recall-biased).
+# NEW shapes only. The generic unwrap/expect/panic markers live in rust.yaml /
+# rust-hardening.yaml; these target two HIGH-VALUE specific panic sites:
+# env::var().unwrap() (startup misconfig) and .lock().expect() (poisoned lock).
+rules:
+  - id: waypoint-rust-env-var-unwrap
+    languages: [rust]
+    severity: WARNING
+    message: >
+      std::env::var(...) is unwrapped/expected, so a missing or non-UTF-8 env var
+      panics. Agent: is this variable guaranteed present in every deployment, or
+      will startup crash if it is absent (config fragility)?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "env::var(...).unwrap()/expect — missing env var panics the process at startup?"
+    patterns:
+      - pattern-either:
+          - pattern: std::env::var($K).unwrap()
+          - pattern: std::env::var($K).expect(...)
+          - pattern: env::var($K).unwrap()
+          - pattern: env::var($K).expect(...)
+          - pattern: std::env::var($K).unwrap_or_else(|$E| panic!(...))
+          - pattern: env::var($K).unwrap_or_else(|$E| panic!(...))
+
+  - id: waypoint-rust-lock-expect-panic
+    languages: [rust]
+    severity: WARNING
+    message: >
+      A Mutex/RwLock guard is acquired with .lock().expect(...) / .unwrap(): if
+      the lock is poisoned (a holder panicked) this propagates the panic. Agent:
+      can a panic while holding this lock cascade into a process-wide crash?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case, concurrency]
+      waypoint_hypothesis: "lock().expect()/unwrap() — poisoned lock turns one panic into a cascading crash?"
+    patterns:
+      - pattern-either:
+          - pattern: $M.lock().expect(...)
+          - pattern: $M.lock().unwrap()
+          - pattern: $M.read().expect(...)
+          - pattern: $M.write().expect(...)
+          - pattern: $M.read().unwrap()
+          - pattern: $M.write().unwrap()

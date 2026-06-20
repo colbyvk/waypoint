@@ -1,0 +1,45 @@
+# Waypoint house abuse rules — Python (spec §3.2.4)
+# Abuse = asymmetric cost/value: amplification (ReDoS, recursion), IDOR shape.
+rules:
+  - id: waypoint-py-redos
+    languages: [python]
+    severity: WARNING
+    message: >
+      Regex with nested/overlapping quantifiers applied to input. Agent: can a
+      crafted string cause catastrophic backtracking (ReDoS)?
+    metadata:
+      category: abuse
+      waypoint_axes: [abuse, security]
+      waypoint_hypothesis: "regex with nested quantifiers on input — catastrophic backtracking (ReDoS)?"
+    patterns:
+      - pattern-either:
+          - pattern: re.compile($RE, ...)
+          - pattern: re.compile($RE)
+          - pattern: re.match($RE, ...)
+          - pattern: re.search($RE, ...)
+          - pattern: re.fullmatch($RE, ...)
+          - pattern: re.findall($RE, ...)
+      - metavariable-regex:
+          metavariable: $RE
+          regex: '\([^)]*[+*][^)]*\)[+*]'
+
+  # IDOR proxy: lookup by a user-supplied id. Whether an ownership check exists
+  # is a judgment for the agent — this just marks the shape.
+  - id: waypoint-py-idor-lookup-by-id
+    languages: [python]
+    severity: INFO
+    message: >
+      Record looked up by id. Agent: is there an ownership/authorization check
+      tying this id to the current user (IDOR)?
+    metadata:
+      category: abuse
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "lookup by user-supplied id — missing ownership/authorization check (IDOR)?"
+    patterns:
+      - pattern-either:
+          - pattern: $M.query.get($ID)
+          - pattern: $M.query.filter_by(id=$ID)
+          - pattern: $SESS.query($M).get($ID)
+          - pattern: $M.objects.get(id=$ID)
+          - pattern: $M.objects.get(pk=$ID)
+          - pattern: $SESS.get($M, $ID)

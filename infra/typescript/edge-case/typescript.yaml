@@ -1,0 +1,29 @@
+# Waypoint edge-case rules — TypeScript (spec §3.2.2)
+rules:
+  - id: waypoint-ts-empty-catch
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Empty catch block swallows the error. Agent: what failure is being hidden,
+      and should it be handled or rethrown?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "empty catch — a dropped error that should be handled?"
+    patterns:
+      - pattern-either:
+          - pattern: "try { ... } catch ($E) { }"
+          - pattern: "try { ... } catch { }"
+
+  - id: waypoint-ts-non-null-assertion
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Non-null assertion (`!`) overrides the type checker. Agent: can this value
+      actually be null/undefined at runtime (dereference crash)?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "non-null assertion (!) — can the value be null/undefined here?"
+    patterns:
+      - pattern: $X!.$Y

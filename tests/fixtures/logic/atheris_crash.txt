@@ -1,0 +1,17 @@
+INFO: Using built-in libfuzzer
+INFO: Seed: 123456789
+INFO: -max_len is not provided; libFuzzer will not generate inputs larger than 4096 bytes
+#2	INITED cov: 21 ft: 22 corp: 1/1b exec/s: 0 rss: 41Mb
+
+ === Uncaught Python exception: ===
+ValueError: invalid literal for int() with base 10: b'\x00'
+Traceback (most recent call last):
+  File "money_fuzz.py", line 11, in TestOneInput
+    parse_amount(data)
+  File "money.py", line 19, in parse_amount
+    return int(raw)
+ValueError: invalid literal for int() with base 10: b'\x00'
+
+==12345== ERROR: libFuzzer: deadly signal
+artifact_prefix='./'; Test unit written to ./crash-1a2b3c4d
+Base64: AA==

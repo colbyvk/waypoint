@@ -1,0 +1,100 @@
+# Waypoint hardening2 rules — TypeScript / security (proxy detectors; recall-biased).
+# languages: [typescript] also parses .tsx. NEW shapes only; does NOT duplicate
+# dom-xss / sql-template / child-process(shell) / jwt / proto-pollution /
+# open-redirect / hardcoded-secret / postmessage already covered.
+rules:
+  - id: waypoint-ts-ssrf-nonliteral-url
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      An outbound HTTP request targets a non-literal URL (axios/fetch/http(s).get).
+      Agent: is the destination derived from user input without an allowlist
+      (SSRF)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "axios/fetch/http.get with a non-literal URL — SSRF if destination is user-controlled?"
+    patterns:
+      - pattern-either:
+          - pattern: axios.get($URL)
+          - pattern: axios.get($URL, ...)
+          - pattern: axios.post($URL, ...)
+          - pattern: axios.put($URL, ...)
+          - pattern: axios.delete($URL, ...)
+          - pattern: axios($URL)
+          - pattern: "axios({ ..., url: $URL, ... })"
+          - pattern: fetch($URL)
+          - pattern: fetch($URL, ...)
+          - pattern: http.get($URL, ...)
+          - pattern: http.get($URL)
+          - pattern: https.get($URL, ...)
+          - pattern: https.get($URL)
+          - pattern: http.request($URL, ...)
+          - pattern: https.request($URL, ...)
+      - metavariable-pattern:
+          metavariable: $URL
+          patterns:
+            - pattern-not-regex: ^[`"']
+            - pattern-not-regex: ^http
+
+  - id: waypoint-ts-insecure-cookie
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A cookie is set without the httpOnly / secure / sameSite flags. Agent: does
+      this cookie carry a session or auth token that should be protected from JS
+      access, plaintext transport, and CSRF (insecure cookie)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "res.cookie / cookie.serialize without httpOnly+secure+sameSite — session/auth cookie exposed?"
+    patterns:
+      - pattern-either:
+          - pattern: $RES.cookie($N, $V)
+          - pattern: $RES.cookie($N, $V, {})
+          - pattern: cookie.serialize($N, $V)
+          - pattern: serialize($N, $V)
+      - pattern-not: "$RES.cookie($N, $V, { ..., httpOnly: true, ... })"
+      - pattern-not: "$RES.cookie($N, $V, { ..., secure: true, ... })"
+      - pattern-not: "$RES.cookie($N, $V, { ..., sameSite: $S, ... })"
+
+  - id: waypoint-ts-cors-wildcard
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      Express CORS configured with a wildcard / reflect-any origin (origin:"*" or
+      origin:true). Agent: are credentialed/authenticated endpoints exposed to
+      arbitrary origins (CORS misconfiguration)?
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: 'cors({origin:"*"}) or origin:true — any origin can call authenticated endpoints?'
+    patterns:
+      - pattern-either:
+          - pattern: 'cors({ ..., origin: "*", ... })'
+          - pattern: 'cors({ origin: "*" })'
+          - pattern: "cors({ ..., origin: true, ... })"
+          - pattern: "cors({ origin: true })"
+
+  - id: waypoint-ts-vm-runincontext
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Node vm.runInNewContext / runInThisContext / runInContext executes a code
+      string. Agent: can attacker-controlled input reach the executed code
+      (sandbox escape / RCE)? vm is not a security boundary.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "vm.runIn*Context on a non-literal — code injection / RCE (vm is not a sandbox)?"
+    patterns:
+      - pattern-either:
+          - pattern: vm.runInNewContext($X, ...)
+          - pattern: vm.runInNewContext($X)
+          - pattern: vm.runInThisContext($X, ...)
+          - pattern: vm.runInThisContext($X)
+          - pattern: vm.runInContext($X, ...)
+          - pattern: $VM.runInNewContext($X, ...)
+          - pattern: $VM.runInContext($X, ...)
+      - pattern-not: vm.runInNewContext("...", ...)
+      - pattern-not: vm.runInThisContext("...", ...)

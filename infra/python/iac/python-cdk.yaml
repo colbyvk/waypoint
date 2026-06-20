@@ -1,0 +1,186 @@
+# Waypoint house IaC rules — AWS CDK in Python (infrastructure-as-code; spec §6, §13)
+# These are PROXY detectors: recall-oriented beacons on risky cloud-config shapes
+# expressed as CDK Python. An agent verifies whether the exposure is real.
+# Python CDK constructs: `import aws_cdk as cdk`, `from aws_cdk import aws_s3 as s3`,
+# `s3.Bucket(self, "id", ...)`. Trivy covers the Terraform/Dockerfile side.
+rules:
+  # ------------------------------------------------------------------ SECURITY
+  - id: waypoint-py-cdk-s3-no-encryption
+    languages: [python]
+    severity: WARNING
+    message: >
+      CDK S3 bucket created without an explicit `encryption=` argument, so it may
+      fall back to unmanaged/SSE defaults. Agent: confirm this bucket stores no
+      sensitive data unencrypted at rest, or require S3_MANAGED/KMS encryption.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "S3 bucket constructed with no encryption= — is data unencrypted at rest?"
+    patterns:
+      - pattern: s3.Bucket(...)
+      - pattern-not: s3.Bucket(..., encryption=..., ...)
+      - pattern-not: s3.Bucket(..., encryption_key=..., ...)
+
+  - id: waypoint-py-cdk-s3-public
+    languages: [python]
+    severity: ERROR
+    message: >
+      CDK S3 bucket is exposed to the public — `public_read_access=True` and/or
+      block-public-access disabled. Agent: confirm whether this bucket is meant
+      to be world-readable, or restore BlockPublicAccess.BLOCK_ALL.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "S3 bucket marked public_read_access / public BPA — intended public exposure?"
+    patterns:
+      - pattern-either:
+          - pattern: s3.Bucket(..., public_read_access=True, ...)
+          - pattern: "s3.Bucket(..., block_public_access=s3.BlockPublicAccess.BLOCK_ACLS, ...)"
+          - pattern: "s3.Bucket(..., block_public_access=None, ...)"
+
+  - id: waypoint-py-cdk-iam-wildcard
+    languages: [python]
+    severity: ERROR
+    message: >
+      CDK IAM PolicyStatement grants wildcard actions (and/or resources). Agent:
+      does this `*` policy violate least-privilege — scope actions and resources
+      to the minimum the principal needs.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "IAM PolicyStatement with actions=['*'] / resources=['*'] — over-broad grant?"
+    patterns:
+      - pattern-either:
+          - pattern: iam.PolicyStatement(..., actions=["*"], ...)
+          - pattern: iam.PolicyStatement(..., resources=["*"], ...)
+
+  - id: waypoint-py-cdk-sg-open-world
+    languages: [python]
+    severity: ERROR
+    message: >
+      CDK security group / connections opened to the whole internet
+      (`ec2.Peer.any_ipv4()` / `any_ipv6()`). Agent: confirm this ingress should
+      be world-reachable, or restrict the CIDR to known ranges.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "security group ingress from Peer.any_ipv4/any_ipv6 — open to the world?"
+    patterns:
+      - pattern-either:
+          - pattern: $X.add_ingress_rule(ec2.Peer.any_ipv4(), ...)
+          - pattern: $X.add_ingress_rule(ec2.Peer.any_ipv6(), ...)
+          - pattern: $X.connections.allow_from(ec2.Peer.any_ipv4(), ...)
+          - pattern: $X.connections.allow_from(ec2.Peer.any_ipv6(), ...)
+          - pattern: $X.allow_from(ec2.Peer.any_ipv4(), ...)
+          - pattern: $X.allow_default_port_from_any_ipv4(...)
+
+  - id: waypoint-py-cdk-db-no-encryption
+    languages: [python]
+    severity: WARNING
+    message: >
+      CDK RDS/Redshift database created without `storage_encrypted=True`. Agent:
+      confirm storage-at-rest encryption requirements for this data store and set
+      storage_encrypted=True.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "RDS/Redshift built with no storage_encrypted=True — unencrypted DB at rest?"
+    patterns:
+      - pattern-either:
+          - pattern: rds.DatabaseInstance(...)
+          - pattern: rds.DatabaseCluster(...)
+          - pattern: redshift.Cluster(...)
+      - pattern-not: rds.DatabaseInstance(..., storage_encrypted=True, ...)
+      - pattern-not: rds.DatabaseCluster(..., storage_encrypted=True, ...)
+      - pattern-not: redshift.Cluster(..., encrypted=True, ...)
+
+  - id: waypoint-py-cdk-db-public
+    languages: [python]
+    severity: ERROR
+    message: >
+      CDK database marked `publicly_accessible=True`, giving it a public endpoint.
+      Agent: confirm this database must be reachable from the internet, or set
+      publicly_accessible=False and keep it in private subnets.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "DB construct with publicly_accessible=True — public database endpoint?"
+    patterns:
+      - pattern-either:
+          - pattern: rds.DatabaseInstance(..., publicly_accessible=True, ...)
+          - pattern: rds.DatabaseCluster(..., publicly_accessible=True, ...)
+          - pattern: redshift.Cluster(..., publicly_accessible=True, ...)
+
+  - id: waypoint-py-cdk-secret-literal-env
+    languages: [python]
+    severity: ERROR
+    message: >
+      A credential-looking environment variable is set to a string literal in CDK
+      (container/function env), hard-coding a secret into the template. Agent:
+      confirm this is not a real credential; move it to Secrets Manager / SSM.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "environment={...PASSWORD/SECRET/TOKEN...: '<literal>'} — hard-coded credential in IaC?"
+    patterns:
+      - pattern-either:
+          - pattern: 'environment={..., "...PASSWORD...": "...", ...}'
+          - pattern: 'environment={..., "...SECRET...": "...", ...}'
+          - pattern: 'environment={..., "...TOKEN...": "...", ...}'
+          - pattern: 'environment={..., "...APIKEY...": "...", ...}'
+          - pattern: 'environment={..., "...API_KEY...": "...", ...}'
+
+  # -------------------------------------------------- DURABILITY / RETENTION
+  - id: waypoint-py-cdk-s3-no-versioning
+    languages: [python]
+    severity: WARNING
+    message: >
+      CDK S3 bucket created without `versioned=True`, so overwritten/deleted
+      objects leave no history. Agent: for a point-in-time / audited data store,
+      losing object history breaks reproducibility — enable versioning.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "S3 bucket with no versioned=True — object history lost, no rollback/audit trail?"
+    patterns:
+      - pattern: s3.Bucket(...)
+      - pattern-not: s3.Bucket(..., versioned=True, ...)
+
+  - id: waypoint-py-cdk-destructive-removal-policy
+    languages: [python]
+    severity: WARNING
+    message: >
+      CDK data store uses `removal_policy=RemovalPolicy.DESTROY`, so a stack
+      delete/replace silently destroys the data. Agent: confirm this store holds
+      no durable/audited data, or switch to RETAIN/SNAPSHOT.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "removal_policy=RemovalPolicy.DESTROY on a data store — data lost on stack delete?"
+    patterns:
+      - pattern: "$CTOR(..., removal_policy=cdk.RemovalPolicy.DESTROY, ...)"
+      - metavariable-pattern:
+          metavariable: $CTOR
+          patterns:
+            - pattern-either:
+                - pattern: s3.Bucket
+                - pattern: rds.DatabaseInstance
+                - pattern: rds.DatabaseCluster
+                - pattern: dynamodb.Table
+                - pattern: redshift.Cluster
+                - pattern: logs.LogGroup
+
+  - id: waypoint-py-cdk-log-retention-infinite
+    languages: [python]
+    severity: WARNING
+    message: >
+      CDK LogGroup created without an explicit `retention=`, defaulting to
+      never-expire (or unbounded) retention. Agent: confirm an intentional
+      retention window for audit/cost — set a RetentionDays value.
+    metadata:
+      category: iac
+      waypoint_axes: [security]
+      waypoint_hypothesis: "LogGroup with no retention= — logs kept forever / no defined window?"
+    patterns:
+      - pattern: logs.LogGroup(...)
+      - pattern-not: logs.LogGroup(..., retention=..., ...)

@@ -1,0 +1,97 @@
+# Waypoint hardening rules — React / security (proxy detectors; recall-biased)
+# JSX/.tsx parsed by semgrep `typescript`. These do NOT duplicate the existing
+# dangerouslySetInnerHTML JSX-attribute rule (infra/react/security/react.yaml);
+# instead they cover href sinks, tabnabbing, __html helper factories, and
+# untrusted prop spreads.
+rules:
+  - id: waypoint-react-unsafe-href
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      An href/src is set from a non-constant expression. Agent: can the value be
+      a `javascript:`/`data:` URI or an attacker-controlled absolute URL
+      (open redirect / DOM XSS)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "href/src bound to a dynamic value — javascript: URI, data: URI, or open redirect?"
+    patterns:
+      - pattern-either:
+          - pattern: "<$EL href={$X} />"
+          - pattern: "<$EL ... href={$X} ... />"
+          - pattern: "<$EL href={$X}>...</$EL>"
+          - pattern: "<$EL ... href={$X} ...>...</$EL>"
+          - pattern: "<$EL src={$X} />"
+          - pattern: "<$EL ... src={$X} ... />"
+          - pattern: "<$EL src={$X}>...</$EL>"
+          - pattern: "<$EL ... src={$X} ...>...</$EL>"
+      # only fire on dynamic values, not string literals like href="/about"
+      - metavariable-pattern:
+          metavariable: $X
+          patterns:
+            - pattern-not-regex: ^"
+
+  - id: waypoint-react-target-blank-no-noopener
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      An anchor uses target="_blank" without rel="noopener" (or "noreferrer").
+      Agent: the opened page can reach window.opener and rewrite this tab —
+      confirm or deny reverse-tabnabbing exposure.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "target=_blank link missing rel=noopener — reverse tabnabbing?"
+    patterns:
+      - pattern-either:
+          - pattern: "<$EL target=\"_blank\" ... />"
+          - pattern: "<$EL ... target=\"_blank\" ... />"
+          - pattern: "<$EL target=\"_blank\" ...>...</$EL>"
+          - pattern: "<$EL ... target=\"_blank\" ...>...</$EL>"
+      - pattern-not-regex: 'rel\s*=\s*"[^"]*noopener'
+      - pattern-not-regex: 'rel\s*=\s*"[^"]*noreferrer'
+      - pattern-not-regex: 'rel\s*=\s*\{[^}]*noopener'
+      - pattern-not-regex: 'rel\s*=\s*\{[^}]*noreferrer'
+
+  - id: waypoint-react-create-markup-helper
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A helper builds a {__html: ...} object from a non-constant value (the
+      classic createMarkup factory feeding dangerouslySetInnerHTML). Agent: trace
+      the argument — can untrusted/unsanitized HTML reach this sink (XSS)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "createMarkup-style {__html} factory from a dynamic value — unsanitized HTML into dangerouslySetInnerHTML (XSS)?"
+    patterns:
+      - pattern-either:
+          - pattern: "function $F(...) { ... return {__html: $X}; }"
+          - pattern: "function $F(...) { return {__html: $X}; }"
+          - pattern: "($PARAM) => ({__html: $X})"
+          - pattern: "(...) => ({__html: $X})"
+          - pattern: "const $F = (...) => { ... return {__html: $X}; }"
+          - pattern: "const $F = (...) => { return {__html: $X}; }"
+      # do not fire on a constant string literal payload
+      - metavariable-pattern:
+          metavariable: $X
+          patterns:
+            - pattern-not-regex: ^"
+
+  - id: waypoint-react-untrusted-prop-spread
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A JSX element spreads an entire object as props ({...$X}). Agent: if $X is
+      attacker-influenced it can inject dangerouslySetInnerHTML, href, event
+      handlers, or style — confirm the object is trusted/whitelisted.
+    metadata:
+      category: security
+      waypoint_axes: [security, abuse]
+      waypoint_hypothesis: "spread of an arbitrary object into JSX props — prop injection (dangerouslySetInnerHTML / href / handlers)?"
+    patterns:
+      - pattern-either:
+          - pattern: "<$EL {...$X} />"
+          - pattern: "<$EL ... {...$X} ... />"
+          - pattern: "<$EL {...$X}>...</$EL>"
+          - pattern: "<$EL ... {...$X} ...>...</$EL>"

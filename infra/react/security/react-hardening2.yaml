@@ -1,0 +1,88 @@
+# Waypoint hardening2 rules — React / security (proxy detectors; recall-biased).
+# languages: [typescript] parses .tsx. NEW shapes only; does NOT duplicate the
+# dangerouslySetInnerHTML / unsafe-href / target-blank / create-markup / prop-spread
+# rules in react.yaml / react-hardening.yaml.
+rules:
+  - id: waypoint-react-token-in-webstorage
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      An auth token / secret is written to localStorage or sessionStorage, which
+      is readable by any script on the origin (XSS can exfiltrate it). Agent: is a
+      session/auth credential being persisted in web storage instead of an
+      httpOnly cookie?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "auth token/secret in localStorage/sessionStorage — exfiltratable by any XSS on the origin?"
+    patterns:
+      - pattern-either:
+          - pattern: localStorage.setItem($K, $V)
+          - pattern: sessionStorage.setItem($K, $V)
+          - pattern: window.localStorage.setItem($K, $V)
+          - pattern: window.sessionStorage.setItem($K, $V)
+          - pattern: localStorage[$K] = $V
+          - pattern: sessionStorage[$K] = $V
+      - metavariable-regex:
+          metavariable: $K
+          regex: '(?i).*(token|secret|password|passwd|api[_-]?key|apikey|auth|jwt|credential|session|access[_-]?key).*'
+
+  - id: waypoint-react-process-env-in-client
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A React component body references process.env.X. Agent: any env value read
+      in client code is inlined into the shipped bundle at build time — is this a
+      secret (API key/token) leaking to the browser? Only public values belong
+      here.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "process.env.X inside a client component — secret inlined into the JS bundle?"
+    patterns:
+      - pattern-either:
+          - pattern-inside: "function $C(...) { ... }"
+          - pattern-inside: "const $C = (...) => { ... }"
+          - pattern-inside: "const $C = (...) => ( ... )"
+      - pattern: process.env.$X
+      - metavariable-regex:
+          metavariable: $X
+          regex: '(?i).*(secret|token|password|api[_-]?key|apikey|private|auth|access[_-]?key).*'
+
+  - id: waypoint-react-insecure-http-url
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A plaintext http:// URL literal is used in a fetch/axios call or an
+      href/src. Agent: does this transport sensitive data or load active content
+      over cleartext (MITM / mixed content)? Use https.
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "plain http:// URL in fetch/href/src — cleartext transport (MITM / mixed content)?"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: fetch($U)
+                  - pattern: fetch($U, ...)
+                  - pattern: axios.get($U)
+                  - pattern: axios.get($U, ...)
+                  - pattern: axios.post($U, ...)
+                  - pattern: axios($U)
+              - metavariable-regex:
+                  metavariable: $U
+                  regex: '^"http://'
+          - patterns:
+              - pattern-either:
+                  - pattern: "<$EL href=$U />"
+                  - pattern: "<$EL ... href=$U ... />"
+                  - pattern: "<$EL href=$U>...</$EL>"
+                  - pattern: "<$EL ... href=$U ...>...</$EL>"
+                  - pattern: "<$EL src=$U />"
+                  - pattern: "<$EL ... src=$U ... />"
+                  - pattern: "<$EL src=$U>...</$EL>"
+                  - pattern: "<$EL ... src=$U ...>...</$EL>"
+              - metavariable-regex:
+                  metavariable: $U
+                  regex: '^"http://'

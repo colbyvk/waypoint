@@ -1,0 +1,122 @@
+# Waypoint hardening rules — React / edge-case (proxy detectors; recall-biased)
+# This dir was previously empty (see README.md). These cover React-specific
+# correctness traps ESLint's exhaustive-deps does NOT catch: array-index keys,
+# direct state mutation, props-into-useState, and non-deterministic render.
+rules:
+  - id: waypoint-react-array-index-key
+    languages: [typescript]
+    severity: INFO
+    message: >
+      An element rendered inside .map(...) uses the loop index as its React key.
+      Agent: if this list reorders/inserts/deletes, index keys corrupt component
+      state and DOM identity — is the list mutable at runtime?
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "array index used as React key in a .map() — state/DOM corruption on reorder?"
+    patterns:
+      # the map callback must declare an index parameter $I, and the key must be
+      # that exact $I (the two $I bind to the same name). Content-derived keys
+      # like key={item} won't unify and are correctly skipped.
+      - pattern-either:
+          - pattern-inside: "$ARR.map(($ITEM, $I) => { ... })"
+          - pattern-inside: "$ARR.map(($ITEM, $I) => ...)"
+          - pattern-inside: "$ARR.map(($ITEM, $I, ...) => { ... })"
+          - pattern-inside: "$ARR.map(($ITEM, $I, ...) => ...)"
+      - pattern-either:
+          - pattern: "<$EL key={$I} />"
+          - pattern: "<$EL ... key={$I} ... />"
+          - pattern: "<$EL key={$I}>...</$EL>"
+          - pattern: "<$EL ... key={$I} ...>...</$EL>"
+          # also catch arithmetic on the index, e.g. key={i + 1}
+          - pattern: "<$EL key={$I + $N} />"
+          - pattern: "<$EL ... key={$I + $N} ... />"
+          - pattern: "<$EL key={$I + $N}>...</$EL>"
+          - pattern: "<$EL ... key={$I + $N} ...>...</$EL>"
+
+  - id: waypoint-react-map-no-key
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A .map() returns a JSX element with no `key` prop (concise-body arrow).
+      Agent: missing keys force full remounts and break list reconciliation —
+      confirm whether a stable key is needed here.
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "JSX element returned from .map() without a key prop — broken reconciliation / remounts?"
+    patterns:
+      - pattern-either:
+          - pattern: "$ARR.map((...) => <$EL>...</$EL>)"
+          - pattern: "$ARR.map((...) => <$EL />)"
+      - pattern-not: "$ARR.map((...) => <$EL ... key={$K} ... />)"
+      - pattern-not: "$ARR.map((...) => <$EL key={$K} ... />)"
+      - pattern-not: "$ARR.map((...) => <$EL ... key={$K} ...>...</$EL>)"
+      - pattern-not: "$ARR.map((...) => <$EL key={$K} ...>...</$EL>)"
+
+  - id: waypoint-react-direct-state-mutation
+    languages: [typescript]
+    severity: INFO
+    message: >
+      A value that looks like React state is mutated in place (push/pop/splice/
+      sort/reverse or field assignment) instead of via its setter. Agent: confirm
+      $STATE comes from useState/useRef.current — in-place mutation skips
+      re-render and corrupts state.
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "in-place mutation of suspected React state (push/splice/field=) — stale UI / skipped re-render?"
+    patterns:
+      - pattern-either:
+          - pattern: "$STATE.push(...)"
+          - pattern: "$STATE.pop(...)"
+          - pattern: "$STATE.shift(...)"
+          - pattern: "$STATE.unshift(...)"
+          - pattern: "$STATE.splice(...)"
+          - pattern: "$STATE.sort(...)"
+          - pattern: "$STATE.reverse(...)"
+          - pattern: "$STATE.$F = $V"
+
+  - id: waypoint-react-usestate-from-prop
+    languages: [typescript]
+    severity: INFO
+    message: >
+      useState is initialized directly from a prop/identifier. Agent: the state
+      is seeded once and will NOT update when the prop changes on re-render —
+      confirm this is intended (uncontrolled) and not a stale-value bug.
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "useState(prop) — state frozen at mount, ignores later prop changes?"
+    patterns:
+      - pattern: "useState($INIT)"
+      # only a bare identifier/member access (a prop), not a literal/expression/call
+      - metavariable-regex:
+          metavariable: $INIT
+          regex: '^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*$'
+      - metavariable-pattern:
+          metavariable: $INIT
+          patterns:
+            # exclude obvious primitive-ish constants written as identifiers
+            - pattern-not: "true"
+            - pattern-not: "false"
+            - pattern-not: "null"
+            - pattern-not: "undefined"
+
+  - id: waypoint-react-nondeterministic-render
+    languages: [typescript]
+    severity: INFO
+    message: >
+      Math.random()/Date.now()/new Date() evaluated in component or render
+      scope. Agent: this makes render impure — confirm it is not breaking
+      memoization, hydration (SSR mismatch), or producing keys/ids that change
+      every render.
+    metadata:
+      category: edge-case
+      waypoint_axes: [edge-case]
+      waypoint_hypothesis: "Math.random()/new Date()/Date.now() in render body — impure render, hydration mismatch, unstable ids?"
+    patterns:
+      - pattern-either:
+          - pattern: "Math.random()"
+          - pattern: "new Date()"
+          - pattern: "Date.now()"

@@ -1,0 +1,73 @@
+# Waypoint hardening2 rules — Rust / security (proxy detectors; recall-biased).
+# NEW shapes only. Does NOT duplicate command-shell / unsafe / transmute /
+# sql-format / hardcoded-secret already covered in rust.yaml / rust-hardening.yaml.
+rules:
+  - id: waypoint-rust-ssrf-nonliteral-url
+    languages: [rust]
+    severity: WARNING
+    message: >
+      An outbound HTTP request targets a non-literal URL (reqwest get/Client
+      send). Agent: is the destination derived from user input without an
+      allowlist (SSRF)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "reqwest::get / Client send with a non-literal URL — SSRF if destination is user-controlled?"
+    patterns:
+      - pattern-either:
+          - pattern: reqwest::get($URL)
+          - pattern: reqwest::get($URL).await
+          - pattern: reqwest::blocking::get($URL)
+          - pattern: $C.get($URL).send()
+          - pattern: $C.get($URL).send().await
+          - pattern: $C.post($URL).send().await
+          - pattern: $C.post($URL).send()
+          - pattern: $C.request($M, $URL).send().await
+      - metavariable-pattern:
+          metavariable: $URL
+          patterns:
+            - pattern-not-regex: ^".*"$
+
+  - id: waypoint-rust-tls-verify-disabled
+    languages: [rust]
+    severity: ERROR
+    message: >
+      TLS certificate verification is disabled (danger_accept_invalid_certs(true)
+      / SslVerifyMode::NONE). Agent: does this client talk to a real remote over
+      TLS with verification off (MITM exposure)?
+    metadata:
+      category: security
+      waypoint_axes: [security]
+      waypoint_hypothesis: "danger_accept_invalid_certs(true) / SslVerifyMode::NONE — TLS verification off (MITM)?"
+    patterns:
+      - pattern-either:
+          - pattern: $B.danger_accept_invalid_certs(true)
+          - pattern: $B.danger_accept_invalid_hostnames(true)
+          - pattern: SslVerifyMode::NONE
+          - pattern: $C.set_verify(SslVerifyMode::NONE)
+          - pattern: builder.danger_accept_invalid_certs(true)
+
+  - id: waypoint-rust-tempfile-predictable
+    languages: [rust]
+    severity: WARNING
+    message: >
+      A temp path is built from a fixed/predictable name under a shared temp dir,
+      or temp_dir() is joined with a constant, instead of using NamedTempFile.
+      Agent: is this file created at a predictable path (symlink/TOCTOU race)?
+    metadata:
+      category: security
+      waypoint_axes: [security, edge-case]
+      waypoint_hypothesis: "predictable temp path (temp_dir().join(const) / fixed /tmp path) — symlink/TOCTOU race?"
+    patterns:
+      - pattern-either:
+          - pattern: std::env::temp_dir().join($NAME)
+          - pattern: env::temp_dir().join($NAME)
+          - patterns:
+              - pattern-either:
+                  - pattern: PathBuf::from($S)
+                  - pattern: Path::new($S)
+                  - pattern: File::create($S)
+                  - pattern: File::open($S)
+              - metavariable-regex:
+                  metavariable: $S
+                  regex: '^"(/tmp/|/var/tmp/|/dev/shm/).*"$'
