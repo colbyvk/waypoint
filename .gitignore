@@ -5,14 +5,16 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Run outputs — regenerated every run. The suppression store + allowlist are
-# tracked (they are memory); the reports/ dir is not.
-reports/*
-!reports/.gitkeep
+# Run outputs — created on first scan, regenerated every run. The suppression
+# store + allowlist are tracked (they are memory); these dirs are not committed.
+reports/
+beacons/
 
-# Dropped beacons — regenerated every run; wipe with bin/wipe-beacons
-beacons/*
-!beacons/.gitkeep
+# Generated beacon-schema docs — derived from infra/ + tag_map.yaml by
+# detectors/gen_schema_infra.py, so they never drift. Reproduced on demand; only
+# the hand-written README (the shared schema) is tracked.
+schema-infra/*
+!schema-infra/README.md
 
 # Toolchain build dirs
 node_modules/

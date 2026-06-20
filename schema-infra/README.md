@@ -10,7 +10,13 @@ which linter(s) raise it**.
 > These docs are **generated** from the rules themselves by
 > `detectors/gen_schema_infra.py` (reads `infra/**/*.yaml` + `tag_map.yaml`), so
 > "where the code lives" and "which linter fires" never drift from reality.
-> Regenerate after changing rules:  `python detectors/gen_schema_infra.py`
+> **The per-beacon docs are generated on demand and are not committed to git**
+> (only this README — the shared schema — is tracked). Populate them locally with:
+>
+>     python detectors/gen_schema_infra.py
+>
+> The human-authored source of truth for the rules is [`hazards/`](../hazards/)
+> (plain-English catalog) and [`infra/`](../infra/) (the Semgrep rules themselves).
 
 ---
 

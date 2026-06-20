@@ -1,6 +1,6 @@
 # Waypoint — Build Plan & Goal
 
-> This document is the plan built out from [WAYPOINT_BUILD_SPEC.md](../WAYPOINT_BUILD_SPEC.md).
+> This document is the plan built out from [WAYPOINT_BUILD_SPEC.md](../../WAYPOINT_BUILD_SPEC.md).
 > It states the goal, decomposes the spec into phases and tasks with status, maps
 > each to the spec, and records how completion was verified. It is the running
 > checklist for the `/loop`-until-done execution of this build.
@@ -57,16 +57,16 @@ Closed the four gaps from the agent-routing rating, all detection/ranking-side
 (agent/dispatch untouched):
 
 1. **Cross-file / interprocedural** [x] — CodeQL is now a first-class OPT-IN lane
-   ([detectors/run_codeql.sh](detectors/run_codeql.sh)) with a one-shot command:
+   ([detectors/run_codeql.sh](../detectors/run_codeql.sh)) with a one-shot command:
    `bin/waypoint <dir> --codeql`, or `--all` (every detector + logic lane + CodeQL).
    Per-language DB build + security-extended suite → native SARIF that merges like any
    beacon; skips with an install hint when the CLI is absent (live run needs the CLI, §15.3).
-2. **Heuristic ranking → real call graph** [x] — [prioritise/callgraph.py](prioritise/callgraph.py)
+2. **Heuristic ranking → real call graph** [x] — [prioritise/callgraph.py](../prioritise/callgraph.py)
    builds caller→callee edges (Python via `ast`; TS/Rust via a brace-scoped extractor) and
    gives `rank.py` **proven reachability** (BFS from trust-boundary entrypoints) + **fan-in
    centrality**. Beacons carry `boundary_source: call-graph|heuristic`; on the sample 289/387
    use graph fan-in and 16 are proven-reachable. Text/glob heuristic kept as a fallback.
-3. **Precision calibration** [x] — [prioritise/calibration.py](prioritise/calibration.py) turns
+3. **Precision calibration** [x] — [prioritise/calibration.py](../prioritise/calibration.py) turns
    past agent verdicts (confirm/dismiss per rule) into a per-rule precision and a score
    multiplier, so chronically-dismissed rules sink and confirmed ones rise. Neutral until
    history exists; `bin/waypoint <dir> --calibrate` recomputes it.

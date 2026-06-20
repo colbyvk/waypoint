@@ -176,7 +176,7 @@ waypoint/
 ├── bin/wipe-beacons          # clear the dropped beacons (beacons/*.md)
 ├── bin/waypoint-sandboxed    # run on UNTRUSTED code in a locked-down container (no net · ro · non-root)
 ├── Dockerfile                # the sandbox image
-├── beacons/                  # ← dropped beacons land here: INDEX.md + <rank>_<hash>.md (run output)
+├── beacons/                  # dropped beacons land here on first scan: INDEX.md + <rank>_<hash>.md (run output, git-ignored)
 ├── skills/waypoint/          # VENDOR-NEUTRAL agent skill (Claude/Gemini/ChatGPT/…): scan → verify → report
 │   └── (symlinked into .claude/skills/ so Claude Code auto-discovers it)
 ├── waypoint.config.yaml      # which detectors run, budgets, thresholds, scoring
@@ -195,7 +195,7 @@ waypoint/
 │   ├── normalize/            # wrappers: semgrep/bandit/pip-audit/clippy/geiger/mypy -> SARIF
 │   └── gen_schema_infra.py   # generate the schema-infra/ beacon docs from the rules
 ├── hazards/                  # plain-English hazard catalog — the source of truth for rules
-├── schema-infra/             # one .md per beacon: the schema, where code lives, which linters fire (generated)
+├── schema-infra/             # README = the shared beacon schema; per-beacon docs generated on demand by gen_schema_infra.py (git-ignored)
 ├── prioritise/
 │   ├── rank.py               # the weighted score (§7)
 │   └── suppress.py           # content-hash store + allowlist (§9)
@@ -207,6 +207,7 @@ waypoint/
 │   └── allowlist.yaml        # human-accepted patterns (justification + expiry required)
 ├── samples/monorepo/         # intentionally-vulnerable Py/Rust/React/TS test fixture
 ├── tests/                    # pytest: verifies the custom layer with NO external scanner
+├── docs/                     # demo.svg + dev docs (PLAN.md roadmap, DECISIONS.md owner choices)
 └── .github/workflows/        # CI: deterministic scan per-PR, agent triage on a schedule
 ```
 
@@ -398,7 +399,7 @@ nothing else depends on it.
 
 Five choices are the owner's to make (repo host, agent model + budget, whether
 CodeQL runs, suppression expiry + allowlist sign-off, monorepo vs per-service).
-They are written up with current defaults in [DECISIONS.md](DECISIONS.md).
+They are written up with current defaults in [DECISIONS.md](docs/DECISIONS.md).
 
 ## Tests
 
