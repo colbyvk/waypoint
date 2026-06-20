@@ -57,9 +57,18 @@ flowchart LR
 ```
 
 **Design principle: assemble, don't build.** Everything hard (parsing, scanning,
-taint tracing, agent orchestration) is delegated to mature open-source tools. The
-custom surface is tiny on purpose — a few readable Python scripts, a folder of
-Semgrep rules, and config — so a non-SWE team can own it.
+taint tracing, optional headless verification) is delegated to mature open-source
+tools. The custom surface is tiny on purpose — a few readable Python scripts, a
+folder of Semgrep rules, and config — so a non-SWE team can own it.
+
+**Does it actually find real bugs?** In a verification run across **7 public repos** —
+opening every top beacon against the source — Waypoint led to **12 confirmed real
+issues**: 11 distinct vulnerabilities in a deliberately-vulnerable app (SQLi, two RCE
+paths, SSRF, XXE, command injection, weak session randomness, DoS) plus a genuine
+`verify=False` TLS bug in httpie's shipping code. **77% of the top beacons were
+genuine**; on mature libraries (Flask / requests / werkzeug / Django) it confirmed
+**zero new defects** — the honest result for battle-tested code. Full method +
+per-repo numbers: **[docs/VALIDATION.md](docs/VALIDATION.md)**.
 
 ---
 
