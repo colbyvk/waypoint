@@ -1,9 +1,28 @@
-# Validation — Waypoint on real public repos
+# Waypoint
 
-This is an honest, reproducible record of running the **full Waypoint workflow** —
-scan, then **open every top beacon's cited `file:line` and confirm it against the
-actual source** — on seven public repositories. It answers one question: *when
-Waypoint flags something, is it real?*
+> **Code triage for the AI era** — a $0, deterministic tool your coding agent runs to
+> find what's wrong *and* surface what it *couldn't* check. No API key — the agent that
+> drives it does the verifying.
+
+[![CI](https://github.com/colbyvk/waypoint/actions/workflows/ci.yml/badge.svg)](https://github.com/colbyvk/waypoint/actions/workflows/ci.yml)
+![tests](https://img.shields.io/badge/tests-112%20passing-brightgreen)
+![rules](https://img.shields.io/badge/rules-176-blue)
+![license](https://img.shields.io/badge/license-Apache--2.0-blue)
+![languages](https://img.shields.io/badge/languages-Python%20%7C%20Rust%20%7C%20TypeScript%20%7C%20React-informational)
+
+**It's a tool, not an agent.** Waypoint runs no model and **needs no API key**. The
+agent that *drives* it — Claude Code, Cursor, or you at a terminal — reads the short,
+scoped list it produces and verifies each item. Waypoint draws the map; the driver
+already has the brain. ([Full README](../README.md))
+
+---
+
+# Validation — does Waypoint actually find real bugs?
+
+An honest, reproducible record of running the **full Waypoint workflow** — scan, then
+**open every top beacon's cited `file:line` and confirm it against the actual source**
+— on seven public repositories. It answers one question: *when Waypoint flags
+something, is it real?*
 
 - **Tier:** `fast` (default) — static only, **$0, no API key**.
 - **Workflow:** the intended one — Waypoint drops ranked beacons; a verifier (here,
