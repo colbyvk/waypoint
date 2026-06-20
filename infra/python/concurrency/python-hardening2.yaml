@@ -30,9 +30,13 @@ rules:
           - pattern: $G.pop(...)
       - metavariable-regex:
           metavariable: $G
-          # heuristic: module-level shared containers are usually UPPER_CASE or
-          # have a shared-ish name; never self.* (instance state) — exclude that.
-          regex: '^(?!self$).+'
+          # Enforce the module-level convention this rule actually targets: a
+          # shared global container is UPPER_CASE (optionally _-prefixed). This
+          # excludes instance state (self.x), local variables, and function
+          # parameters — none of which are the module-level shared state a
+          # cross-thread race needs. (A bare `^(?!self$).+` matched ALL of those:
+          # on Flask it fired 117x, ~all on locals/params/self.x — see CHANGELOG.)
+          regex: '^_?[A-Z][A-Z0-9_]*$'
       # not obviously protected by a lock context
       - pattern-not-inside: |
           with $LOCK:

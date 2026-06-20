@@ -3,6 +3,25 @@
 All notable changes to Waypoint. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **`waypoint-py-thread-shared-mutable-nolock` was over-broad.** Its `$G` guard
+  (`^(?!self$).+`) excluded only the bare name `self`, so it fired on local
+  variables, function parameters, and `self.attr[...]` — not the module-level
+  shared state it targets. On Flask it produced **117 of 221 beacons (53%)**,
+  effectively all false positives. It now enforces the module-global convention
+  the rule already documented (`$G` is UPPER_CASE, optionally `_`-prefixed).
+  Result: Flask **221 → 95 beacons**, concurrency axis **118 → 0**, with the
+  PLANT fixture still firing (zero recall loss). The over-broad-proxy lesson: a
+  recall-biased rule still has to encode *some* evidence of its target.
+
+### Validated
+- Fresh end-to-end runs on **Flask** (9.5k LOC, 9s) and **httpie** (9.8k LOC, 4s);
+  the coverage partition holds on both. The httpie run surfaced a genuine
+  `requests.get(..., verify=False)` (TLS verification disabled) in its production
+  update check, ranked **#2**. See `hardening/proof_flask/` + `hardening/proof_httpie/`.
+
 ## [0.1.0] — 2026-06-20
 
 First public release.
@@ -53,7 +72,7 @@ First public release.
 - **Registry packs** via `SEMGREP_EXTRA` (no new dependency).
 
 ### Quality & proof
-- **103 tests** (no external scanner required); CI cold-installs and self-tests on
+- **112 tests** (no external scanner required); CI cold-installs and self-tests on
   fresh Ubuntu + macOS across Python 3.11/3.12.
 - Security hardening: config isolation, gated/sandboxed dynamic lanes, verified CodeQL
   download, secret redaction, path containment (see [SECURITY.md](SECURITY.md)).
