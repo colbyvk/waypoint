@@ -8,7 +8,8 @@ Most scanners never state their guarantee class. Waypoint does — strongest fir
 ## 1. Coverage partition — SOUND, by construction
 Every enumerated function is classified into **exactly one** of:
 - **ANALYZED** — its body was parsed **and** it is reachable from a trust-boundary
-  entrypoint via **resolved** calls.
+  entrypoint **or the public API surface** (exported / `pub` / public symbols), via
+  **resolved** calls.
 - **DARK** — everything else: an orphan, a function reachable only via an
   unresolved/computed edge, or one in a parse-incomplete region.
 

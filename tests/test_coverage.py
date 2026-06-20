@@ -31,7 +31,7 @@ def _by_name(rep, name):
 
 # --- honesty: tiers from observed facts, NO float severity --------------------
 def test_no_gap_carries_a_float_severity(tmp_path):
-    rep = _gather(tmp_path, {"a.py": "import subprocess\ndef r(c):\n    return subprocess.run(c)\n"})
+    rep = _gather(tmp_path, {"a.py": "import subprocess\ndef _r(c):\n    return subprocess.run(c)\n"})
     assert rep["gaps"]
     for g in rep["gaps"]:
         assert "relevance" not in g and "score" not in g
@@ -53,37 +53,37 @@ def test_getattr_literal_static_but_computed_dynamic(tmp_path):
 
 
 def test_orphan_reaching_io_sink_is_sink_tier(tmp_path):
-    rep = _gather(tmp_path, {"h.py": "import requests\ndef fetch(u):\n    return requests.get(u)\n"})
-    g = _by_name(rep, "fetch")
+    rep = _gather(tmp_path, {"h.py": "import requests\ndef _fetch(u):\n    return requests.get(u)\n"})
+    g = _by_name(rep, "_fetch")
     assert g["tier"] == "sink-adjacent" and "get" in g["observed"]["sinks"]
 
 
 def test_orphan_reaching_code_exec_sink_is_code_exec_tier(tmp_path):
-    rep = _gather(tmp_path, {"h.py": "import subprocess\ndef run_it(c):\n    return subprocess.run(c)\n"})
-    g = _by_name(rep, "run_it")
+    rep = _gather(tmp_path, {"h.py": "import subprocess\ndef _run_it(c):\n    return subprocess.run(c)\n"})
+    g = _by_name(rep, "_run_it")
     assert g["tier"] == "code-exec-adjacent" and "run" in g["observed"]["sinks"]
 
 
 def test_bare_orphan_is_opaque(tmp_path):
-    rep = _gather(tmp_path, {"u.py": "def util():\n    return 1 + 1\n"})
-    assert _by_name(rep, "util")["tier"] == "opaque"
+    rep = _gather(tmp_path, {"u.py": "def _util():\n    return 1 + 1\n"})
+    assert _by_name(rep, "_util")["tier"] == "opaque"
 
 
 def test_code_exec_orders_before_io_sink(tmp_path):
     rep = _gather(tmp_path, {
-        "a.py": "import subprocess\ndef run_it(c):\n    return subprocess.run(c)\n",
-        "b.py": "import requests\ndef fetch(u):\n    return requests.get(u)\n"})
-    order = [g.get("name") for g in rep["gaps"] if g.get("name") in ("run_it", "fetch")]
-    assert order.index("run_it") < order.index("fetch")   # gaps pre-sorted: code-exec first
+        "a.py": "import subprocess\ndef _run_it(c):\n    return subprocess.run(c)\n",
+        "b.py": "import requests\ndef _fetch(u):\n    return requests.get(u)\n"})
+    order = [g.get("name") for g in rep["gaps"] if g.get("name") in ("_run_it", "_fetch")]
+    assert order.index("_run_it") < order.index("_fetch")   # gaps pre-sorted: code-exec first
 
 
 def test_demo_path_is_a_hint_and_sorts_after(tmp_path):
     rep = _gather(tmp_path, {
-        "src/h.py": "import subprocess\ndef run_a(c):\n    return subprocess.run(c)\n",
-        "examples/h.py": "import subprocess\ndef run_b(c):\n    return subprocess.run(c)\n"})
-    names = [g.get("name") for g in rep["gaps"] if g.get("name") in ("run_a", "run_b")]
-    assert names.index("run_a") < names.index("run_b")
-    assert "example/demo path" in _by_name(rep, "run_b")["hints"]
+        "src/h.py": "import subprocess\ndef _run_a(c):\n    return subprocess.run(c)\n",
+        "examples/h.py": "import subprocess\ndef _run_b(c):\n    return subprocess.run(c)\n"})
+    names = [g.get("name") for g in rep["gaps"] if g.get("name") in ("_run_a", "_run_b")]
+    assert names.index("_run_a") < names.index("_run_b")
+    assert "example/demo path" in _by_name(rep, "_run_b")["hints"]
 
 
 def test_test_and_vendor_paths_excluded(tmp_path):
@@ -116,11 +116,11 @@ def test_conservative_dynamic_only_reach_stays_dark(tmp_path):
     # root; `target` is reachable only via the unresolved getattr dispatch.
     rep = _gather(tmp_path, {"lib.py":
         "def main(n, x):\n    return getattr(x, n)()\n"   # computed dispatch — edge unresolved
-        "def target():\n    return 1\n"})
+        "def _target():\n    return 1\n"})
     assert rep["summary"]["partition_holds"]
-    # target has no resolved caller → it must be DARK (an orphan gap), never analyzed
-    assert _by_name(rep, "target")["tier"] in ("opaque", "sink-adjacent", "code-exec-adjacent")
-    assert rep["summary"]["analyzed"] == 1   # only main is entrypoint-reachable; target stays dark
+    # _target has no resolved caller (private; reached only via getattr) → must be DARK
+    assert _by_name(rep, "_target")["tier"] in ("opaque", "sink-adjacent", "code-exec-adjacent")
+    assert rep["summary"]["analyzed"] == 1   # only main is entrypoint-reachable; _target stays dark
 
 
 def test_clike_unbounded_brace_is_parse_incomplete(tmp_path):

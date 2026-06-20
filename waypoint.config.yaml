@@ -158,6 +158,11 @@ boundary:
     - "app.get("
     - "app.post("
     - "router."
+  # The PUBLIC API surface (exported / `pub` / non-`_` symbols) is also an entry
+  # surface — external callers reach it — so a LIBRARY with no handler/route/main
+  # boundary isn't 100% dark. Sound: a public symbol is callable from outside by
+  # definition. Set false to count only handler-reachable code as analyzed.
+  include_public_api: true
 
 # ----------------------------------------------------------------------------
 # Coverage / blind-spot map (prioritise/coverage.py — the LLM "dark zone").

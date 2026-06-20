@@ -20,6 +20,16 @@ All notable changes to Waypoint. Format loosely follows
   +4 tests (119 total).
 
 ### Changed
+- **Call-graph reachability now seeds the public API surface — the dark zone reflects
+  genuine un-analyzability, not graph weakness.** The reachability graph had no library
+  entrypoints, so a library with no handler/route/main boundary read as mostly/entirely
+  dark (`ky` was **100% dark**). Now exported / `pub` / public non-`_` symbols seed
+  reachability (sound — a public symbol is callable from outside). Traceability:
+  **ky 0%→80%, requests 59%→92%, Flask 63%→90%, werkzeug 42%→86%, Django 65%→93%** — the
+  coverage partition still holds on every repo, and the valuable sink/code-exec-adjacent
+  dark is preserved (only the false-dark collapsed). Toggle: `boundary.include_public_api`
+  (default true). +6 call-graph/coverage tests. (Edges are still name-based *within* a
+  module; import/type resolution is the next depth step.)
 - **Leaned into the dark zone; cut detection to the additive core.** Repositioned the
   pitch around the one thing no linter does — the **dark-zone map** (what a static pass
   *couldn't* analyze) + reachability ranking — rather than rule count. Detection is now

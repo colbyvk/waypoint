@@ -22,8 +22,8 @@ TWO honesty rules drive this module:
      they never define a tier (that would be "pretending to know").
 
   2. COVERAGE PARTITION (the guarantee): every enumerated function is either
-     ANALYZED (parsed AND reachable from a trust-boundary entrypoint via RESOLVED
-     calls) or DARK (everything else — all listed). `analyzed ∪ dark = all`,
+     ANALYZED (parsed AND reachable from a trust-boundary entrypoint OR the public
+     API surface, via RESOLVED calls) or DARK (everything else — all listed). `analyzed ∪ dark = all`,
      `analyzed ∩ dark = ∅`, asserted at runtime. The call graph is CONSERVATIVE:
      an unresolved/computed/mis-parsed edge is never used to mark a target
      reachable — we always err toward DARK. So nothing is silently assumed safe.
@@ -312,8 +312,8 @@ def render_md(report: dict, top_k: int) -> str:
                f"`blindspots.json`). `analyzed ∪ dark = all` · nothing silently assumed safe.")
     tr = s.get("graph_traceability_pct")
     if tr is not None:
-        out.append(f"- **Traceability ≈ {tr}%** _(reachable from an in-repo entrypoint; low is normal "
-                   f"for libraries — their API is called externally)._")
+        out.append(f"- **Traceability ≈ {tr}%** _(reachable from a trust-boundary entrypoint "
+                   f"or the public API surface, via resolved calls)._")
     out.append(f"- **Could not even read:** {s['unparsed_files']} unparsed file(s), "
                f"{s['parse_incomplete']} parse-incomplete region(s) — graded NOTHING (we didn't traverse them).")
     out.append("")

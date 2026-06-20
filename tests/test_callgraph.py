@@ -11,7 +11,7 @@ def service(x):
 def helper(y):
     return y
 
-def orphan():                  # defined, never called
+def _unused():                 # PRIVATE, defined but never called -> dark
     return 0
 """
 
@@ -27,7 +27,7 @@ def test_python_fan_in_counts_distinct_callers(tmp_path):
     assert cg.defined("helper")
     assert cg.fan_in("helper") == 1     # service calls it twice -> 1 DISTINCT caller
     assert cg.fan_in("service") == 1     # handle_request
-    assert cg.fan_in("orphan") == 0
+    assert cg.fan_in("_unused") == 0
 
 
 def test_python_reachability_from_boundary(tmp_path):
@@ -37,7 +37,34 @@ def test_python_reachability_from_boundary(tmp_path):
     reach = cg.reachable_from(roots)
     assert "handle_request" in roots
     assert {"handle_request", "service", "helper"} <= reach   # transitively reachable
-    assert "orphan" not in reach                              # unreachable -> NOT boundary
+    assert "_unused" not in reach                             # private + uncalled -> dark
+
+
+def test_public_api_is_an_entrypoint_surface(tmp_path):
+    # a library with no handler/route/main boundary: its PUBLIC API is the entry
+    # surface, so public symbols seed reachability — otherwise everything reads
+    # 100% dark (the `ky` problem). Private + uncalled code stays dark.
+    lib = ("def public_fn(x):\n"
+           "    return _helper(x)\n\n"
+           "def _helper(y):\n"
+           "    return y\n\n"
+           "def _dead():\n"
+           "    return 0\n\n"
+           "class PublicThing:\n"
+           "    def method(self):\n"
+           "        return _helper(1)\n")
+    cg = _build(tmp_path, {"lib.py": lib})
+    roots = CG.boundary_entrypoints(cg, str(tmp_path), {})    # no boundary config => library
+    reach = cg.reachable_from(roots)
+    assert "public_fn" in roots and "method" in roots         # public func + public method = entry
+    assert "_helper" in reach                                  # reached via the public API
+    assert "_dead" not in reach                               # private + uncalled -> still dark
+
+
+def test_public_api_seeding_can_be_disabled(tmp_path):
+    cg = _build(tmp_path, {"lib.py": "def public_fn(x):\n    return 1\n"})
+    roots = CG.boundary_entrypoints(cg, str(tmp_path), {"include_public_api": False})
+    assert "public_fn" not in roots                           # opted out -> not an entry
 
 
 def test_decorator_marks_entrypoint(tmp_path):
@@ -61,6 +88,21 @@ def test_clike_extracts_real_edges(tmp_path):
     cg = _build(tmp_path, {"a.ts": ts})
     assert cg.defined("inner") and cg.fan_in("inner") == 1
     assert {"outer", "inner", "leaf"} <= cg.reachable_from({"outer"})
+
+
+def test_clike_export_and_rust_pub_seed_entrypoints(tmp_path):
+    ts = ("export function api(){ return impl(); }\n"
+          "function impl(){ return 1; }\n"
+          "function unused(){ return 2; }\n")
+    cg = _build(tmp_path, {"a.ts": ts})
+    reach = cg.reachable_from(CG.boundary_entrypoints(cg, str(tmp_path), {}))
+    assert "api" in reach and "impl" in reach     # exported entry + its callee
+    assert "unused" not in reach                  # not exported, not called -> dark
+    rs = ("pub fn api() -> i32 { helper() }\nfn helper() -> i32 { 1 }\nfn dead() -> i32 { 2 }\n")
+    cg2 = _build(tmp_path, {"b.rs": rs})
+    reach2 = cg2.reachable_from(CG.boundary_entrypoints(cg2, str(tmp_path), {}))
+    assert "api" in reach2 and "helper" in reach2  # pub fn entry + callee
+    assert "dead" not in reach2                     # private rust fn, uncalled -> dark
 
 
 def test_unparseable_file_does_not_crash(tmp_path):

@@ -112,6 +112,30 @@ The confirmed real findings are unaffected — e.g. httpie's `verify=False` stil
 in the core top (now #3). The dark zone is unchanged and is now the headline capability.
 115 tests pass; `semgrep --validate` clean (core 107, experimental 69).
 
+## Update — call-graph resolution (the dark zone got real)
+
+The dark zone is only as sharp as the reachability behind it, and that call graph was
+name-based **with no library entrypoints** — so a library with no handler/route/main
+boundary read as mostly (or entirely) dark regardless of how analyzable it actually was.
+Fixed by **seeding the public API surface as an entry surface** (exported / `pub` /
+public non-`_` symbols) — sound, because a public symbol is callable from outside by
+definition. Re-measured (the coverage partition still holds on every repo):
+
+| repo | traceability before | after | genuine dark now |
+|---|---|---|---|
+| **ky** | **0%** (100% dark) | **80%** | 10 (2 code-exec, 2 sink, 6 opaque) |
+| requests | 59% | **92%** | 14 |
+| Flask | 63% | **90%** | 24 |
+| werkzeug | 42% | **86%** | 86 |
+| Django | 65% | **93%** | 285 |
+
+The **valuable** dark (sink- and code-exec-adjacent blind spots) is preserved — only the
+*false*-dark (private/unreferenced functions the name-based graph couldn't connect)
+collapsed. `ky` went from "couldn't check anything" to 80% traced with **4 genuine
+dark-near-danger spots** — the honest signal the deploy verdict now rests on. (Still
+name-based on *edges* within a module; full import/type resolution to remove
+name-collision over-connection is the next depth step.)
+
 ## Reproduce
 
 ```bash

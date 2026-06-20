@@ -155,6 +155,29 @@ def _extract_python(text: str):
     return defs, top, dynamics, True
 
 
+def _python_public_names(text: str) -> set[str]:
+    """The module's PUBLIC API surface: module-level functions, and methods of
+    module-level classes, whose names don't start with `_`. A library's public API
+    *is* its entry surface — external callers reach it — so these seed reachability
+    even when there is no app-style trust boundary (handler/route/main). Sound: a
+    public symbol is callable from outside the repo by definition."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return set()
+    pub: set[str] = set()
+    for node in tree.body:                                  # module top level only
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if not node.name.startswith("_"):
+                pub.add(node.name)
+        elif isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+            for item in node.body:
+                if (isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and not item.name.startswith("_")):
+                    pub.add(item.name)
+    return pub
+
+
 _CLIKE_DEF = re.compile(
     r"""(?:
         \bfunction\s+(?P<f>[A-Za-z_$][\w$]*)            # function foo(
@@ -251,6 +274,33 @@ def _extract_clike(text: str):
     return defs, dynamics
 
 
+_EXPORT_RX = re.compile(
+    r"\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)"  # export [default] [async] function/class NAME
+    r"|\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)"                              # export const NAME = …
+    r"|\bexport\s+default\s+([A-Za-z_$][\w$]*)"                                        # export default IDENT
+    r"|\bexport\s*\{([^}]*)\}"                                                          # export { a, b as c }
+    r"|\bpub(?:\s*\([^)]*\))?\s+(?:async\s+)?fn\s+([A-Za-z_][\w]*)",                    # rust pub fn NAME
+    re.MULTILINE,
+)
+
+
+def _clike_exported_names(text: str) -> set[str]:
+    """Exported / public symbols for TS/JS (`export …`) and Rust (`pub fn`). These are
+    the module's entry surface — seed reachability from them. For `export { a as c }`
+    the LOCAL name `a` is seeded (that's what the def is keyed by)."""
+    names: set[str] = set()
+    for m in _EXPORT_RX.finditer(text):
+        for g in (m.group(1), m.group(2), m.group(3), m.group(5)):
+            if g:
+                names.add(g)
+        if m.group(4):                                       # export { a, b as c }
+            for part in m.group(4).split(","):
+                local = part.strip().split(" as ")[0].strip()
+                if re.match(r"^[A-Za-z_$][\w$]*$", local):
+                    names.add(local)
+    return names
+
+
 # tree-sitter is an OPTIONAL soundness upgrade for clike (TS/JS/TSX/JSX/Rust). When
 # present it gives sound enumeration + reliable bodies; when absent we fall back to
 # the regex extractor above. Python always uses stdlib `ast` (sound, zero-dep).
@@ -296,6 +346,7 @@ class CallGraph:
         self.parse_incomplete: list[dict] = []       # [{file,name,line}] — body couldn't be bounded (dark)
         self.dynamic_sites: list[dict] = []          # [{file,line,kind,enclosing}]
         self.code_files = 0                          # total source files walked
+        self.exported: set[str] = set()              # public-API names — the entry surface
 
     def add_def(self, name, file, line, decorators):
         self.defs.setdefault(name, []).append(
@@ -360,11 +411,13 @@ def build(base: str, exclude_globs=()) -> CallGraph:
             if ext in _PY_EXT:
                 defs, top, dynamics, parse_ok = _extract_python(text)
                 cg.add_edges(TOPLEVEL, top)
+                cg.exported |= _python_public_names(text)
                 if not parse_ok:
                     cg.parse_failures.append({"file": rel})
                 defs = [(n, c, l, d, True) for (n, c, l, d) in defs]  # ast bodies are reliably bounded
             else:
                 defs, dynamics, file_clean = _clike_extract(text, ext)
+                cg.exported |= _clike_exported_names(text)
             for name, callees, line, decs, body_ok in defs:
                 cg.add_def(name, rel, line, decs)
                 if body_ok:
@@ -403,4 +456,10 @@ def boundary_entrypoints(cg: CallGraph, base: str, bcfg: dict) -> set[str]:
             from sariflib import glob_match_path  # local import; sariflib on path
             if glob_match_path(rel, path_globs):
                 roots.add(name); break
+    # The PUBLIC API surface is an entry surface too: external callers reach exported
+    # / public symbols, so a library (no handler/route/main boundary) isn't 100% dark.
+    # Sound — a public symbol is callable from outside by definition. Toggle off with
+    # boundary.include_public_api: false.
+    if bcfg.get("include_public_api", True):
+        roots |= {n for n in cg.exported if n in cg.defs}
     return roots
