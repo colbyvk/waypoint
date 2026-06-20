@@ -90,6 +90,28 @@ The 27 false positives concentrate in a few identifiable rules (the value of run
 - **ky's TS concurrency proxies misfire** — `waypoint-ts-shared-mutable-async` / `-shared-counter-multi-async` fired on `merge.ts` and `body.ts`, which contain **no `async`/`await` at all**, and on function-local accumulators / a per-instance `#retryCount`. ~8 of ky's 11 FPs. Fix: require a real async context **and** module-level (not local/instance) state.
 - **Bandit `S104`** fires on `"0.0.0.0"` used in *string comparisons* (werkzeug log/host-allowlist branches), not actual socket binds — upstream Bandit behavior; can be down-weighted in `tag_map.yaml`.
 
+## Update — the lean-detection pivot (acted on the above)
+
+The false positives above were concentrated in recall-biased *proxy* rules and in
+non-shipping directories. Both were addressed, then re-measured:
+
+- **Retired 69 proxy rules** (concurrency / abuse / edge-case / authz) to
+  `infra/experimental/` (off by default). `infra/core/` is now **107 curated rules** —
+  taint-mode dataflow + precise security / logic / IaC.
+- **Down-weighted non-core dirs** (examples / docs / scripts / extras / benchmarks) in ranking.
+
+Re-scan after the pivot (default `fast` tier):
+
+| Repo | Beacons (was → now) | Retired-rule FPs in default | Non-core in top-10 (was → now) |
+|---|---|---|---|
+| Flask  | 221 → **84**  | **0** | 6/10 → **0/10** |
+| httpie | 158 → **125** | **0** | docs/extras → **0/10** |
+| ky     | 22 → **0**    | **0** | every ky beacon had been a proxy FP/contextual; the precise rules correctly find nothing in clean code |
+
+The confirmed real findings are unaffected — e.g. httpie's `verify=False` still ranks
+in the core top (now #3). The dark zone is unchanged and is now the headline capability.
+115 tests pass; `semgrep --validate` clean (core 107, experimental 69).
+
 ## Reproduce
 
 ```bash
