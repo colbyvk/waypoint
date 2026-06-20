@@ -38,14 +38,16 @@ Waypoint is a read-only code-triage engine: a cheap, deterministic pass drops ra
 8. **Report in plain English.** For each *confirmed* issue: **what** it is, **where** (`file:line`), **why** it matters (what breaks in production), and **the fix**. Lead with the worst. Group by theme (security · correctness · dependencies · config). Cover both confirmed beacons *and* anything you found investigating the blind spots. Say how many suspicions you reviewed and dismissed as false positives.
 
 ## Automation & the learning loop (unattended / CI — NOT interactive triage)
-When running headless — CI, a batch job, or an explicit "triage it all for me" handoff —
-you can let Waypoint's own agent layer do the verifying, and let it **learn**:
-- `bin/waypoint <dir> --dispatch [--backend …]` — send the top-N **beacons** to the verifier agent; writes verdicts.
-- `bin/waypoint <dir> --investigate [--backend …]` — send the top-K **dark-zone** blind spots to the verifier, each with a scoped hypothesis.
+When running headless — CI or a batch job with **no agent present to verify** — Waypoint
+can write the verifier prompts for you and, *optionally*, call a model itself. You almost
+never need this: when you (the agent) are driving, **you are the verifier** and no key is
+involved.
+- `bin/waypoint <dir> --dispatch` — write verifier-shaped prompts for the top-N **beacons** to `reports/dispatch/` (no model, no key).
+- `bin/waypoint <dir> --investigate` — same for the top-K **dark-zone** blind spots, each with a scoped hypothesis.
 - `bin/waypoint <dir> --gate` — non-zero exit if beacons violate the policy gate (CI teeth).
 - `bin/waypoint <dir> --calibrate` — recompute per-rule precision from accumulated verdicts.
 
-**The loop:** `--dispatch` / `--investigate` produce verdicts → `--calibrate` turns them into per-rule score multipliers → the next scan ranks sharper on *this* repo (rules that keep getting dismissed sink; confirmed ones rise). Backends: `dry-run` (default, $0, writes prompts), `claude-cli`, `anthropic-api`. For an interactive human, skip all of this — *you* are the verifier (see Don't).
+**The loop:** verdicts → `--calibrate` turns them into per-rule score multipliers → the next scan ranks sharper on *this* repo (dismissed rules sink; confirmed ones rise). Verdicts come from **whoever verified** — you, the human's dismissals in `suppression/store.json`, or (only if you pass `--backend claude-cli|anthropic-api`) a model Waypoint calls itself. The loop needs **no API key**; `dry-run` is the default and calls nothing. For an interactive human, skip all of this — *you* are the verifier (see Don't).
 
 ## What it covers
 Five axes — **security, edge-case, concurrency, abuse, logic** — plus dependency CVEs, secrets, and IaC / cloud-config, across **Python, Rust, TypeScript, React**. 176 custom rules + wired scanners (Semgrep, Bandit, Ruff, mypy, Clippy, Trivy, Gitleaks, pip-audit, osv-scanner, eslint), optional CodeQL cross-file taint, and a dynamic logic lane that produces reproducing inputs. Every scan also produces a **blind-spot map** (`beacons/BLINDSPOTS.md`) — the regions it *couldn't* verify — so coverage gaps are explicit, not silent.

@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-fallback_dispatcher.py — Phase 4 (spec §8).
+fallback_dispatcher.py — OPTIONAL headless verification (spec §8).
 
-Take the top-N ranked beacons, assemble each one's CONTEXT ENVELOPE (the region
-plus its immediate callers/callees — built here at dispatch time, not at
-detection time, per §2.1), and turn each into a VERIFIER-shaped agent message:
-"here is a hypothesis, here is the code, prove or disprove" — never an explorer
-prompt like "find bugs in this repo".
+Waypoint is a tool, not an agent: normally the agent (or human) that RUNS Waypoint
+reads the beacons and verifies them — no model is called here, and no API key is
+needed. This module exists only for UNATTENDED runs with no agent present.
 
-This is the fallback the spec calls for when RAPTOR (the preferred harness,
-dispatch/raptor/) is not used. It is fully functional on its own.
+It takes the top-N ranked beacons, assembles each one's CONTEXT ENVELOPE (the region
+plus its immediate callers/callees — built here at dispatch time, not at detection
+time, per §2.1), and turns each into a VERIFIER-shaped prompt: "here is a hypothesis,
+here is the code, prove or disprove" — never an explorer prompt like "find bugs in
+this repo".
 
 Backends (waypoint.config.yaml dispatch.backend, or --backend):
-  dry-run        write prompts to reports/dispatch/ and call NO model (default,
-                 deterministic — CI-safe, costs nothing)
+  dry-run        write prompts to reports/dispatch/ and call NO model (DEFAULT —
+                 deterministic, CI-safe, no key, costs nothing)
   claude-cli     shell out to the `claude` CLI in headless mode (`claude -p`)
-  anthropic-api  call the Anthropic API (needs ANTHROPIC_API_KEY)
+  anthropic-api  call the Anthropic API (the ONLY backend that needs ANTHROPIC_API_KEY)
 Verdicts (confirm/dismiss/escalate) are written to reports/verdicts.json — a
 SEPARATE record from "what fired" (§2.3) — and dismissals are written back into
 the suppression store so they do not re-raise.
@@ -261,7 +262,7 @@ def investigate(blindspots_path, base, backend, top_k, pad, model, out_dir,
         json.dump(manifest, fh, indent=2)
     if backend == "dry-run":
         print(f"investigate: wrote {len(manifest)} investigation prompts -> {os.path.relpath(out_dir, root)}/")
-        print("  (dry-run: no model called. Set --backend to spend on the dark zone.)")
+        print("  (dry-run: no model, no key — your agent verifies these. --backend calls a model only when no agent is present.)")
         return 0
     with open(verdicts_path, "w", encoding="utf-8") as fh:
         json.dump({"verdicts": verdicts}, fh, indent=2)
@@ -346,7 +347,7 @@ def record_verdicts(verdicts: list[dict], store_path: str, expiry_days: int) -> 
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Dispatch top-N beacons to a verifier agent.")
+    ap = argparse.ArgumentParser(description="Emit verifier prompts for the top-N beacons (optional headless verification; default writes files, no model, no key).")
     ap.add_argument("ranked", nargs="?", help="ranked beacon SARIF (from rank.py)")
     ap.add_argument("--backend", default=None, help="dry-run | claude-cli | anthropic-api")
     ap.add_argument("--top-n", type=int, default=None)
@@ -441,7 +442,7 @@ def main(argv=None):
 
     if backend == "dry-run":
         print(f"dispatch: wrote {len(manifest)} verifier prompts -> {os.path.relpath(out_dir, root)}/")
-        print("  (dry-run: no model called, no verdicts. Set dispatch.backend to go live.)")
+        print("  (dry-run: no model, no key — your agent verifies these. Set a --backend only for headless runs with no agent.)")
         return 0
 
     with open(verdicts_path, "w", encoding="utf-8") as fh:

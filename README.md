@@ -1,7 +1,8 @@
 # Waypoint
 
-> **Code triage for the AI era** — it finds what's wrong, *and* tells you what it
-> *couldn't* check, then hands an LLM a short, scoped list to verify.
+> **Code triage for the AI era** — a $0, deterministic tool your coding agent runs to
+> find what's wrong *and* surface what it *couldn't* check. No API key — the agent that
+> drives it does the verifying.
 
 [![CI](https://github.com/colbyvk/waypoint/actions/workflows/ci.yml/badge.svg)](https://github.com/colbyvk/waypoint/actions/workflows/ci.yml)
 ![tests](https://img.shields.io/badge/tests-112%20passing-brightgreen)
@@ -12,12 +13,17 @@
 **Triage for the era of AI-generated code.** You (or your agent) now ship code faster
 than anyone can review it. Waypoint is the cheap, deterministic layer that flags the
 regions worth a second look — and, just as importantly, **tells you which regions it
-*couldn't* vouch for** — then hands an LLM agent a short, scoped list to verify.
+*couldn't* vouch for**.
+
+**It's a tool, not an agent.** Waypoint runs no model and **needs no API key**. The
+agent that *drives* it — Claude Code, Cursor, or you at a terminal — reads the short,
+scoped list it produces and verifies each item. Waypoint draws the map; the driver
+already has the brain.
 
 It is **not a linter**: a linter prints diagnostics for a human. Waypoint drops ranked
 **beacons** (markers on suspicious regions) *and* a **dark-zone map** (the regions a
-static pass structurally cannot reason about), then routes only the top ones to an
-agent that *confirms or dismisses* each with situated reasoning.
+static pass structurally cannot reason about), then hands the top ones to whoever runs
+it to *confirm or dismiss* each with situated reasoning.
 
 ![Waypoint scanning a repo — ranked beacons and the dark zone](docs/demo.svg)
 
@@ -32,7 +38,7 @@ flowchart TD
     C --> E
     D["<b>BEACONS</b> — beacons/INDEX.md<br/>what it FOUND (ranked suspicions)"] --> F
     E["<b>DARK ZONE</b> — beacons/BLINDSPOTS.md<br/>what it COULD NOT verify (ranked)"] --> F
-    F{"<b>Optional · costs $</b><br/>LLM verifies only the top-N"} --> G["Confirmed findings<br/>verdicts feed calibration"]
+    F{"<b>Whoever ran Waypoint verifies</b><br/>the top-N — your agent, or you<br/>(no model in Waypoint · no API key)"} --> G["Confirmed findings<br/>verdicts feed calibration"]
 ```
 
 The cheap pass never decides whether something is *actually broken* — only whether a
@@ -93,9 +99,8 @@ Put it on your `PATH` with `ln -s "$(pwd)/bin/waypoint" /usr/local/bin/waypoint`
 bin/waypoint <repo> --changed         # incremental: only files changed vs git (+ cached baseline)
 bin/waypoint <repo> --deep            # DEEP tier: CodeQL + logic lane — RUNS TARGET CODE (needs --i-trust-this-code)
 bin/waypoint-sandboxed <repo> --deep  # ...or run untrusted code isolated (no network · read-only · non-root)
-bin/waypoint <repo> --investigate     # send the ranked DARK-ZONE blind spots to the verifier agent
-bin/waypoint <repo> --dispatch        # send the top beacons to the verifier agent (dry-run by default)
-bin/waypoint <repo> --backend anthropic-api   # …with a live agent
+bin/waypoint <repo> --dispatch        # emit verifier-shaped prompts for YOUR agent (writes files; no model, no key)
+bin/waypoint <repo> --investigate     # same, for the ranked DARK-ZONE blind spots
 bin/waypoint <repo> --gate            # fail (exit 1) on policy-violating beacons (CI teeth)
 bin/waypoint <repo> --logic           # the slow logic lane (mutation / race / fuzz / property-based testing)
 bin/waypoint <repo> --codeql          # CodeQL cross-file taint (needs the CodeQL CLI)
@@ -163,7 +168,7 @@ a beacon. Waypoint's extra fields live in `result.properties.waypoint`:
 ```
 
 Normalizing everything to SARIF is what lets the detectors, the merger, the
-prioritiser, the suppression store, and the agent layer all speak one language —
+prioritiser, the suppression store, and the verification step all speak one language —
 and findings render natively in the GitHub Security tab for free.
 
 ---
@@ -201,7 +206,7 @@ waypoint/
 │   ├── rank.py               # the weighted score (§7)
 │   └── suppress.py           # content-hash store + allowlist (§9)
 ├── dispatch/
-│   ├── fallback_dispatcher.py# assemble envelope, prompt the verifier agent
+│   ├── fallback_dispatcher.py# assemble envelope + verifier prompts (optional · headless)
 │   └── raptor/               # integration with the preferred RAPTOR harness
 ├── suppression/
 │   ├── store.json            # content-hash -> verdict + expiry (agent-written)
@@ -222,8 +227,8 @@ waypoint/
 | Merge | `detectors/merge_sarif.py` | tag axes + hypothesis, dedup overlapping regions, hash | no |
 | Rank + suppress | `prioritise/rank.py` | score (§7), drop suppressed/allowlisted beacons | no |
 | Coverage | `prioritise/coverage.py` | derive + rank **blind spots** (regions the graph can't verify) → `beacons/BLINDSPOTS.md` | no |
-| Dispatch | `dispatch/fallback_dispatcher.py` | top-N beacons → verifier agent → verdicts | **yes** |
-| Investigate | `… --investigate` | top-K **blind spots** → verifier agent → verdicts | **yes** |
+| Dispatch | `dispatch/fallback_dispatcher.py` | top-N beacons → verifier prompts for your agent → verdicts | optional |
+| Investigate | `… --investigate` | top-K **blind spots** → verifier prompts for your agent → verdicts | optional |
 
 The deterministic stages (collect → merge → rank) are independently useful and
 fully reproducible. The raw per-tool SARIF in `reports/` is the auditable record
@@ -264,34 +269,40 @@ ones that get confirmed (neutral until verdicts accumulate; recompute with
 - `suppression/allowlist.yaml` holds human-accepted patterns; every entry requires
   a written justification and an expiry date.
 
-### Dispatch backends (`waypoint.config.yaml` → `dispatch.backend`)
+### Advanced — headless verification (only when *no* agent is present)
 
-| backend | behavior |
-|---|---|
-| `dry-run` *(default)* | write verifier prompts to `reports/dispatch/`, call no model — deterministic, costs nothing |
-| `claude-cli` | shell out to the `claude` CLI in headless mode |
-| `anthropic-api` | call the Anthropic API (needs `ANTHROPIC_API_KEY`) |
-| RAPTOR | hand the ranked beacons to a [RAPTOR](dispatch/raptor/README.md) harness (preferred) |
+**You almost never need this, and by default it needs no key.** Normally the agent
+that runs Waypoint *is* the verifier — it reads `beacons/INDEX.md` +
+`beacons/BLINDSPOTS.md` and confirms each item itself, at no extra cost. `--dispatch`
+and `--investigate` exist only for **unattended** runs (a pipeline with no agent
+driving): they assemble each beacon's context envelope into a **verifier-shaped**
+prompt — "here is a hypothesis, here is the code, prove or disprove," never "find bugs
+in this repo."
 
-Agent prompts are always **verifier-shaped**: "here is a hypothesis, here is the
-code, prove or disprove" — never "find bugs in this repo."
+By default they call **no model** and use **no key** — they just write the prompts to
+`reports/dispatch/` for any agent to pick up. If you have no agent at all and want
+Waypoint to produce verdicts itself, an optional backend can call one — **this is the
+only place an API key is ever used, and it is never required:**
 
-### Turning on the learning loop
+| `dispatch.backend` (`waypoint.config.yaml` or `--backend`) | calls a model? | key? |
+|---|---|---|
+| `dry-run` *(default)* | no — writes prompts to `reports/dispatch/` | **none** |
+| `claude-cli` | shells out to your local `claude` CLI | the CLI's own auth |
+| `anthropic-api` | calls the Anthropic API | `ANTHROPIC_API_KEY` |
+| RAPTOR | hands the ranked beacons to a [RAPTOR](dispatch/raptor/README.md) harness | per that harness |
 
-Calibration is **neutral until it has verdicts** — a fresh install does nothing
-special, which is correct (it can't learn from data it doesn't have). To switch it on:
+### The learning loop — works with no key
+
+Calibration is **neutral until it has verdicts**, then turns them into per-rule score
+multipliers (dismissed rules sink toward `min_factor`; confirmed ones rise toward
+`max_factor`, `waypoint.config.yaml` → `scoring.calibration`). It reads verdicts from
+**whoever verified** — your agent, your own dismissals in `suppression/store.json`, or
+the optional headless backend above. So the loop itself needs **no API key**:
 
 ```bash
-bin/waypoint <repo> --dispatch --backend anthropic-api   # verdicts → reports/verdicts.json
-bin/waypoint <repo> --calibrate                          # verdicts → per-rule multipliers
-# next scan ranks sharper on THIS repo; repeat on a cadence (e.g. nightly CI)
+# normal path: your agent (or you) verifies; dismissals land in suppression/store.json, then:
+bin/waypoint <repo> --calibrate     # verdicts → per-rule multipliers; next scan ranks sharper on THIS repo
 ```
-
-It also learns from **human** dismissals — every beacon you reject lands in
-`suppression/store.json`, which `--calibrate` reads too. So the loop works with or
-without the agent backend; the agent just produces verdicts faster. Rules that keep
-getting dismissed sink toward `min_factor`; confirmed ones rise toward `max_factor`
-(`waypoint.config.yaml` → `scoring.calibration`).
 
 ### Coverage / blind-spot map — the "dark zone" (`prioritise/coverage.py`)
 
@@ -389,10 +400,11 @@ Hardening: the static tiers run **Waypoint's own** ESLint/mypy config (`--no-con
 
 Waypoint is primarily a command you run against a directory — CI is just one place
 to run that command. If you want it, the **optional** [`.github/workflows/waypoint.yml`](.github/workflows/waypoint.yml)
-runs `bin/waypoint` for you: the deterministic scan on push/PR (uploading SARIF to
-the Security tab), and the agent triage on a **nightly schedule** rather than per-PR
-so agent cost never gates anything (spec §12). Delete it if you don't use GitHub —
-nothing else depends on it.
+runs the deterministic scan on push/PR and uploads SARIF to the Security tab —
+**no API key, no AI** (spec §12). It also carries a commented-out, fully optional
+*headless triage* job for the rare case of an unattended pipeline with no agent
+present; that block is the only thing that would touch a key, and it ships disabled.
+Delete the file if you don't use GitHub — nothing else depends on it.
 
 ---
 

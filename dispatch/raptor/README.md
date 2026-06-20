@@ -1,4 +1,8 @@
-# RAPTOR integration (preferred agent harness — spec §8)
+# RAPTOR integration (OPTIONAL external harness — spec §8)
+
+> **Waypoint needs no API key and no external harness.** The agent that runs Waypoint
+> (or you) verifies the beacons. RAPTOR is a *purely optional* upgrade for unattended
+> setups with no agent present; RAPTOR — not Waypoint — is what would use a key.
 
 Waypoint's spec prefers **wrapping an existing agent harness over building one**.
 [RAPTOR](https://github.com/gadievron/raptor) already implements almost exactly

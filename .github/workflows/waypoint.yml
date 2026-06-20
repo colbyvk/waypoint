@@ -1,14 +1,17 @@
 # ============================================================================
-# Waypoint CI (spec §12)
+# Waypoint CI (spec §12)  —  deterministic, no AI, NO API KEY.
 #
-# Assumes this Waypoint tree is the repository root (so .github/workflows/ is
-# picked up by GitHub). Two jobs, split by cost:
-#   * scan    — every PR and push. Deterministic, no AI, fast. Produces beacons,
-#               ranks + suppresses, uploads SARIF to the Security tab. The cheap
-#               pass must never block on agent cost.
-#   * triage  — on a SCHEDULE (nightly), not per-PR, because agent calls cost
-#               money/time. Dispatches the top-N ranked beacons to a verifier
-#               agent and commits any new suppressions back.
+# Waypoint is a tool: this workflow just runs the command and publishes results.
+# The agent that reviews the findings is whoever opens the PR (or you) — Waypoint
+# itself never calls a model and never needs a secret.
+#
+#   scan — every PR and push. Deterministic, fast. Produces beacons, ranks +
+#          suppresses, uploads SARIF to the Security tab. No key.
+#
+# An OPTIONAL headless-triage job (the ONLY thing that would use an API key) is
+# included at the bottom, commented out, for the rare unattended pipeline with no
+# agent present. You do not need it — leave it disabled unless you specifically
+# want Waypoint to call a model on your behalf.
 #
 # WAYPOINT_TARGET picks what to scan. It defaults to the bundled sample monorepo
 # so a fresh clone demonstrably produces beacons — CHANGE IT to your own source
@@ -19,12 +22,9 @@ on:
   pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: "0 7 * * *"      # 07:00 UTC nightly — agent triage sweep
   workflow_dispatch:
 
 permissions:
-  contents: write            # triage commits suppression updates
   security-events: write     # upload SARIF to the Security tab
 
 env:
@@ -32,7 +32,6 @@ env:
 
 jobs:
   scan:
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +47,7 @@ jobs:
         run: ./bin/waypoint "$WAYPOINT_TARGET"
 
       # Policy gate ("teeth"): fail the PR when beacons violate waypoint.config.yaml
-      # `gate:` (e.g. a high-severity security/pit finding). Opt-in — uncomment to
+      # `gate:` (e.g. a high-severity security finding). Opt-in — uncomment to
       # enforce. Tune the thresholds in waypoint.config.yaml before enabling.
       # - name: Policy gate
       #   run: ./bin/waypoint "$WAYPOINT_TARGET" --gate
@@ -63,36 +62,43 @@ jobs:
         if: always()
         with: { name: waypoint-reports, path: reports/ }
 
-  triage:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-
-      - name: Install detectors
-        run: |
-          ./detectors/install.sh
-          .venv/bin/pip install --quiet anthropic   # for the anthropic-api backend
-
-      - name: Scan + dispatch top-N to the verifier agent
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: ./bin/waypoint "$WAYPOINT_TARGET" --backend anthropic-api
-
-      - name: Commit suppression updates
-        run: |
-          git config user.name  "waypoint-bot"
-          git config user.email "waypoint-bot@users.noreply.github.com"
-          if ! git diff --quiet -- suppression/store.json; then
-            git add suppression/store.json
-            git commit -m "waypoint: record agent verdicts (suppress dismissed beacons)"
-            git push
-          fi
-
-      - name: Archive verdicts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: waypoint-verdicts, path: reports/ }
+# ----------------------------------------------------------------------------
+# OPTIONAL — headless triage (the ONLY part that uses an API key).
+#
+# You normally do NOT need this. When an agent (Claude Code, Cursor, …) or a
+# person reviews the PR, they are the verifier — for free, no key. This job is
+# only for an unattended pipeline with no agent present, where you want Waypoint
+# to call a model itself and record verdicts. To enable it: uncomment the block,
+# add the `schedule:`/`contents: write` lines noted inline, and set the
+# ANTHROPIC_API_KEY repo secret.
+#
+#   schedule:                 # add under `on:` above
+#     - cron: "0 7 * * *"     # 07:00 UTC nightly
+#   permissions:              # add `contents: write` so it can commit suppressions
+#     contents: write
+#
+# triage:
+#   if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+#   runs-on: ubuntu-latest
+#   steps:
+#     - uses: actions/checkout@v4
+#       with: { fetch-depth: 0 }
+#     - uses: actions/setup-python@v5
+#       with: { python-version: "3.12" }
+#     - name: Install detectors (+ anthropic SDK for the optional backend)
+#       run: |
+#         ./detectors/install.sh
+#         .venv/bin/pip install --quiet anthropic
+#     - name: Scan + dispatch top-N to a model (optional backend)
+#       env:
+#         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+#       run: ./bin/waypoint "$WAYPOINT_TARGET" --backend anthropic-api
+#     - name: Commit suppression updates
+#       run: |
+#         git config user.name  "waypoint-bot"
+#         git config user.email "waypoint-bot@users.noreply.github.com"
+#         if ! git diff --quiet -- suppression/store.json; then
+#           git add suppression/store.json
+#           git commit -m "waypoint: record verdicts (suppress dismissed beacons)"
+#           git push
+#         fi

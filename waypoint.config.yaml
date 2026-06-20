@@ -2,7 +2,7 @@
 # Waypoint configuration
 # ----------------------------------------------------------------------------
 # This single file controls which detectors run, how beacons are scored, when
-# they are suppressed, and how the agent layer is dispatched. It is meant to be
+# they are suppressed, and how optional headless verification is dispatched. It is meant to be
 # edited by the owning team WITHOUT touching any Python. Everything below has a
 # sensible default; change values, not code.
 #
@@ -256,9 +256,10 @@ logic:
   property_reports: []            # globs of saved property-test logs to ingest (Hypothesis / proptest / fast-check)
 
 # ----------------------------------------------------------------------------
-# Agent dispatch (spec §8). The cheap deterministic pass produces beacons for
-# free on every run; the agent layer sweeps the top-N on a cadence to control
-# cost.
+# Optional headless verification (spec §8). The cheap deterministic pass produces
+# beacons for free on every run; normally your agent verifies the top-N. With no
+# agent present, an optional backend sweeps the top-N on a cadence (the only place
+# a model or key is used).
 #   backend:
 #     dry-run        -> write verifier prompts to reports/dispatch/, call no LLM
 #                       (fully deterministic; the default so CI never spends $$)

@@ -17,15 +17,19 @@ Affects CodeQL setup and the SARIF-upload step.
 
 ---
 
-### 2. Which model backs the agent, and the per-run budget
+### 2. Optional headless backend (only when no agent is present)
 
-- **Default model:** `claude-opus-4-8` (`waypoint.config.yaml` → `dispatch.model`).
-- **Default budget:** top **25** ranked beacons per run (`dispatch.budget_top_n`).
-  This is the single biggest cost lever — raise it for thoroughness, lower it to
-  save money. PRs get *all* the cheap deterministic beacons regardless; the budget
-  only caps how many get an agent visit.
-- **Default backend:** `dry-run` (writes prompts, calls no model). Switch to
-  `anthropic-api` or `claude-cli` (or RAPTOR) when you are ready to spend.
+Waypoint needs **no API key** — the agent that runs it (or you) verifies the beacons.
+These settings apply *only* if you turn on the optional headless backend for an
+unattended run with no agent driving:
+
+- **Default backend:** `dry-run` (writes verifier prompts to `reports/dispatch/`, calls
+  no model, uses no key). Switch to `claude-cli` or `anthropic-api` (or RAPTOR) only if
+  you want Waypoint to call a model itself — the sole place a key is used.
+- **Model (only if a backend is on):** `claude-opus-4-8` (`waypoint.config.yaml` → `dispatch.model`).
+- **Budget (only if a backend is on):** top **25** ranked beacons per run
+  (`dispatch.budget_top_n`) — the biggest cost lever. Scans get *all* the cheap
+  deterministic beacons regardless; the budget only caps how many a model visits.
 
 ---
 

@@ -3,11 +3,10 @@
 # waypoint — point it at a directory and triage the whole tree.
 #
 #   waypoint <dir>                 scan a directory:  detect → merge → rank
-#   waypoint <dir> --dispatch      also send the top-N beacons to the verifier agent
-#   waypoint <dir> --investigate   send the ranked BLIND SPOTS (regions the static
-#                                  pass could not verify) to the LLM "dark zone"
-#   waypoint <dir> --backend NAME  live backend for --dispatch / --investigate
-#                                  (dry-run | claude-cli | anthropic-api)
+#   waypoint <dir> --dispatch      write verifier prompts for the top-N beacons (no model, no key)
+#   waypoint <dir> --investigate   write verifier prompts for the ranked DARK-ZONE blind spots
+#   waypoint <dir> --backend NAME  OPTIONAL: let Waypoint call a model itself (headless, no agent present)
+#                                  (dry-run [default, no key] | claude-cli | anthropic-api [needs key])
 #   waypoint <dir> --top-n N       cap how many beacons are dispatched
 #   waypoint <dir> --gate          fail (exit 1) if beacons violate the policy gate
 #   waypoint <dir> --logic         also run the logic lane (mutation/race/fuzz/property) — RUNS TARGET CODE
@@ -21,9 +20,10 @@
 #   waypoint --test                run Waypoint's own test suite
 #   waypoint --help
 #
-# TIERS:  fast (default, $0, seconds) → --deep (CodeQL + logic, minutes) →
-#         --dispatch (agent verifies the top-N beacons, $). The agent is never in
-#         the mass-scan path; it only verifies what the deterministic tiers rank.
+# TIERS:  fast (default, $0, seconds) → --deep (CodeQL + logic, minutes). Waypoint
+#         needs NO API key — the agent (or you) that runs it verifies the ranked
+#         beacons. --dispatch just writes those prompts; a model is called only with
+#         an explicit --backend, for headless runs with no agent present.
 # SAFETY: --logic/--deep EXECUTE the scanned code. For UNTRUSTED code, scan inside
 #         the locked-down container:  bin/waypoint-sandboxed <dir> --deep
 #

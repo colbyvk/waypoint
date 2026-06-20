@@ -5,6 +5,17 @@ All notable changes to Waypoint. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **Repositioned as a tool, not an agentic harness.** Waypoint runs no model and
+  **needs no API key** for anything it's for — the agent (or human) that *drives* it
+  reads the beacons and verifies them. Reframed the README top + flow diagram, the
+  SKILL guide, `docs/DECISIONS`, `bin/waypoint --help`, and the dispatcher to lead
+  with this. The optional `--dispatch`/`--investigate` model backends are demoted to a
+  clearly-labeled "headless, no agent present" escape hatch — the sole place a key is
+  ever used, and never required; `dry-run` (write prompts, no model, no key) stays the
+  default. The example CI (`.github/workflows/waypoint.yml`) now runs **key-free**; its
+  model-calling triage job ships commented-out. No behavior change — framing only.
+
 ### Fixed
 - **`waypoint-py-thread-shared-mutable-nolock` was over-broad.** Its `$G` guard
   (`^(?!self$).+`) excluded only the bare name `self`, so it fired on local

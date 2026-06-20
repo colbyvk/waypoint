@@ -270,5 +270,5 @@ on each logic beacon). It is a beacon-dropper, not a linter.
 
 ### Remaining items — externally blocked, NOT open work
 - **Live CodeQL run** — wired + enabled; needs the CodeQL CLI (not installable in this sandbox).
-- **Live agent dispatch** — backends wired; needs an API key + per-run budget (owner, §15).
+- **Optional headless dispatch** — backends wired; only the optional `anthropic-api` backend needs an API key (the sole place one is used), and it is never required — the driving agent verifies for free.
 - **Per-rule precision/recall calibration** — needs the team's real repos; the fixture only proves rules fire.
