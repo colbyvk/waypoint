@@ -33,14 +33,14 @@ def _hits(rules_rel, fixture_rel):
 
 
 def test_python_taint_fires_on_plant_only():
-    plant, ok, hit = _hits("infra/python/security/python-taint.yaml",
+    plant, ok, hit = _hits("infra/core/python/security/python-taint.yaml",
                            "samples/monorepo/py_service/taint_samples.py")
     assert plant and plant <= hit, f"taint MISSED plant lines: {sorted(plant - hit)}"
     assert not (ok & hit), f"taint FIRED on safe (OK) lines: {sorted(ok & hit)}"
 
 
 def test_ts_taint_fires_on_plant_only():
-    plant, ok, hit = _hits("infra/typescript/security/typescript-taint.yaml",
+    plant, ok, hit = _hits("infra/core/typescript/security/typescript-taint.yaml",
                            "samples/monorepo/ts_lib/src/taint_samples.ts")
     assert plant and plant <= hit, f"taint MISSED plant lines: {sorted(plant - hit)}"
     assert not (ok & hit), f"taint FIRED on safe (OK) lines: {sorted(ok & hit)}"

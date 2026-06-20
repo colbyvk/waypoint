@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-gen_schema_infra.py — generate the beacon-schema docs under schema-infra/.
+gen_schema_infra.py — generate the beacon-schema docs under infra/schema-infra/.
 
-Reads the rules themselves (infra/**/*.yaml) + tag_map.yaml + the sample
+Reads the rules themselves (infra/core/**/*.yaml) + tag_map.yaml + the sample
 fixtures, and writes one Markdown schema per beacon:
-  schema-infra/<language>/<classifier>/<rule-id>.md   (custom Semgrep beacons)
-  schema-infra/off-the-shelf/<tool>.md                (wired-tool beacons)
-  schema-infra/INDEX.md                               (every beacon, grouped)
+  infra/schema-infra/<language>/<classifier>/<rule-id>.md   (custom Semgrep beacons)
+  infra/schema-infra/off-the-shelf/<tool>.md                (wired-tool beacons)
+  infra/schema-infra/INDEX.md                               (every beacon, grouped)
 
 Each doc records what the beacon is, WHERE THE DETECTION CODE LIVES, and WHICH
-LINTER(S) RAISE IT — derived from source so it never drifts. schema-infra/README.md
+LINTER(S) RAISE IT — derived from source so it never drifts. infra/schema-infra/README.md
 (the shared schema) is hand-written and left untouched.
 
 Run after changing rules:  python detectors/gen_schema_infra.py
@@ -26,8 +26,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sariflib as S  # noqa: E402
 
 ROOT = S.repo_root()
-INFRA = os.path.join(ROOT, "infra")
-OUT = os.path.join(ROOT, "schema-infra")
+INFRA = os.path.join(ROOT, "infra", "core")
+OUT = os.path.join(ROOT, "infra", "schema-infra")
 SAMPLES = os.path.join(ROOT, "samples", "monorepo")
 
 _SEV_LEVEL = {"ERROR": "error", "WARNING": "warning", "INFO": "note"}
@@ -148,11 +148,11 @@ def find_hazard(rule_id: str) -> str | None:
 
 def iter_custom_rules():
     for f in sorted(glob.glob(os.path.join(INFRA, "**", "*.yaml"), recursive=True)):
-        rel = os.path.relpath(f, ROOT)
-        parts = rel.split(os.sep)            # infra / <language> / <classifier> / file
-        if len(parts) < 4:
+        rel = os.path.relpath(f, ROOT)            # infra/core/<language>/<classifier>/<file> (display)
+        inner = os.path.relpath(f, INFRA).split(os.sep)   # [<language>, <classifier>, ..., <file>]
+        if len(inner) < 3:
             continue
-        language, classifier = parts[1], parts[2]
+        language, classifier = inner[0], inner[1]
         try:
             data = S.load_yaml(f) or {}
         except Exception as exc:                       # tolerate a malformed file
@@ -317,7 +317,7 @@ def main():
     tool_docs = write_offtheshelf(tag_map)
     write_index(rule_docs, tool_docs)
     print(f"gen_schema_infra: {len(rule_docs)} custom beacon schemas + "
-          f"{len(tool_docs)} off-the-shelf tool docs -> schema-infra/")
+          f"{len(tool_docs)} off-the-shelf tool docs -> infra/schema-infra/")
     return 0
 
 

@@ -20,12 +20,12 @@ bin/waypoint --test         # the suite (no external scanner needed)
 ```
 
 ## Adding a detector rule
-1. Drop a Semgrep YAML under `infra/<language>/<axis>/` (axes: security · edge-case ·
+1. Drop a Semgrep YAML under `infra/core/<language>/<axis>/` (axes: security · edge-case ·
    concurrency · abuse · logic). Set `metadata.waypoint_axes` and a
    `metadata.waypoint_hypothesis` (the claim the agent will prove/disprove).
 2. For a **third-party tool** rule (ruff/bandit/clippy/…), route its id to an axis in
    `tag_map.yaml` instead.
-3. Validate: `.venv/bin/semgrep --validate --config infra` (must be 0 errors).
+3. Validate: `.venv/bin/semgrep --validate --config infra/core` (must be 0 errors).
 4. Add a fixture under `samples/` (mark `WAYPOINT-PLANT` = should fire,
    `WAYPOINT-OK` = must stay quiet) and a test.
 

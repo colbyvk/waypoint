@@ -27,7 +27,7 @@ Closed the correctness/logic gap with the remaining **spec-free, no-agent**
 detectors. Property-based testing + 4-language fuzzing shipped earlier; the three
 remaining levers are now done, all pure detectability (agent/dispatch untouched):
 
-1. **Logic-smell static rules** [x] — 14 net-new Semgrep rules in `infra/<lang>/logic/`
+1. **Logic-smell static rules** [x] — 14 net-new Semgrep rules in `infra/core/<lang>/logic/`
    (Python 5, TypeScript 5, Rust 2, React 2): self-comparison, `is`-vs-`==` on
    literals, return-in-finally, constant condition, `== None`, assignment-in-
    condition, `Array.sort()` w/o comparator, NaN comparison, conditional React
@@ -70,7 +70,7 @@ Closed the four gaps from the agent-routing rating, all detection/ranking-side
    past agent verdicts (confirm/dismiss per rule) into a per-rule precision and a score
    multiplier, so chronically-dismissed rules sink and confirmed ones rise. Neutral until
    history exists; `bin/waypoint <dir> --calibrate` recomputes it.
-4. **Auth / access-control pack** [x] — 6 net-new OWASP-A01 rules (`infra/<lang>/authz/`):
+4. **Auth / access-control pack** [x] — 6 net-new OWASP-A01 rules (`infra/core/<lang>/authz/`):
    unauthenticated Flask route, mass-assignment over-binding, privilege-from-request
    (Python + TS), client-side-only auth guard (React). 14 authz beacons on the sample.
 
@@ -111,9 +111,9 @@ scopes to the changed files (454 → 8) and splices the baseline (6 fresh + 11 c
 
 Pre-release hardening against Waypoint's own threat model (it scans untrusted code):
 
-- **1A — fast tier can't execute target config.** mypy `--config-file=infra/mypy/waypoint.cfg`
+- **1A — fast tier can't execute target config.** mypy `--config-file=infra/core/mypy/waypoint.cfg`
   (blocks a malicious `mypy.ini` `plugins=` — verified vuln→fix); ESLint is Waypoint-owned +
-  `--no-config-lookup` + `infra/eslint/waypoint.eslint.config.mjs` (never the target's binary/config/plugins).
+  `--no-config-lookup` + `infra/core/eslint/waypoint.eslint.config.mjs` (never the target's binary/config/plugins).
 - **1B — dynamic lanes gated + sandboxed.** `--logic/--deep` refuse unless `--i-trust-this-code`
   / `WAYPOINT_TRUSTED=1` (verified; `run_logic.sh` self-guards). `bin/waypoint-sandboxed` + `Dockerfile`
   run in a no-network, read-only, non-root, ephemeral container (built; live run needs a docker daemon).
@@ -192,7 +192,7 @@ surface is a few readable scripts + a folder of rules.
 - *Spec: §4, §11(P1), §13*
 
 ### Phase 2 — Concurrency-proxy + house rules [x]
-- [x] Custom Semgrep rules in `infra/<language>/<classifier>/` — **176 rules** across the **general-software axes** (security / edge-case / concurrency / abuse / logic) × Python / Rust / TypeScript / React, plus **20 IaC/CDK** (AWS cloud-config). Includes **14 logic-smell static rules** (`infra/<lang>/logic/`) that make `logic` a *static* axis, and **6 authz/access-control rules** (`infra/<lang>/authz/`, OWASP A01). *(Data-engineering / PIT detection was **cut per owner**.)*
+- [x] Custom Semgrep rules in `infra/core/<language>/<classifier>/` — **176 rules** across the **general-software axes** (security / edge-case / concurrency / abuse / logic) × Python / Rust / TypeScript / React, plus **20 IaC/CDK** (AWS cloud-config). Includes **14 logic-smell static rules** (`infra/core/<lang>/logic/`) that make `logic` a *static* axis, and **6 authz/access-control rules** (`infra/core/<lang>/authz/`, OWASP A01). *(Data-engineering / PIT detection was **cut per owner**.)*
 - [x] **Taint-mode (dataflow) detection** — **14 rules** (Python 7, TypeScript 5, Rust 2; TS covers React `.tsx`): a beacon fires only when **untrusted input actually flows into a sink** (SQLi, command, path, SSRF, code-exec, XSS, open-redirect, deserialization, SSTI). Detects real injections shape rules miss **and** stays quiet on parametrized/sanitized/constant paths — improving both depth and signal without touching the agent.
 - [x] `hazards/` plain-English catalog (source of truth, 13 docs) → rules generated from it
 - [x] Validated: concurrency proxies fire on known regions in all four languages
@@ -228,7 +228,7 @@ surface is a few readable scripts + a folder of rules.
   - **four-language fuzzing** — `fuzz_to_sarif` now reads cargo-fuzz (Rust), **atheris** (Python) and **jazzer.js** (TS/JS) crashes and carries the crashing input. This is the correctness lever: it finds logic bugs with **no spec and no existing tests**, the half static rules can't reach.
 - [x] `rank.py` · [x] suppression store + allowlist · [x] CI glue · [x] fallback dispatcher
 - [x] `bin/waypoint` command · [x] `sariflib.py` / `suppress.py` shared libs · [x] 40 tests
-- [x] `schema-infra/` — beacon-schema docs (one `.md` per beacon: axes, where the code lives, which linters fire, SARIF fields, example) generated from the rules by `detectors/gen_schema_infra.py`
+- [x] `infra/schema-infra/` — beacon-schema docs (one `.md` per beacon: axes, where the code lives, which linters fire, SARIF fields, example) generated from the rules by `detectors/gen_schema_infra.py`
 
 ## Acceptance criteria (§14) — all PASS
 - [x] Runs cleanly against a polyglot repo (Python, Rust, React, TypeScript)
@@ -248,7 +248,7 @@ Flagged, not guessed — see [DECISIONS.md](DECISIONS.md) (repo host, model+budg
 
 ## Verification (how "done" was proven)
 - `bin/waypoint samples/monorepo`: 624 raw → 369 beacons (122 multi-axis) → 367 active + 2 suppressed, 7 tools, 0 SARIF validation errors.
-- 176 Semgrep rules valid (`semgrep --validate --config infra` → 0 errors), 0 duplicates. Data-engineering rules removed — **only general-software domains remain**.
+- 176 Semgrep rules valid (`semgrep --validate --config infra/core` → 0 errors), 0 duplicates. Data-engineering rules removed — **only general-software domains remain**.
 - Beacons span the general-software axes: security 217, edge-case 141, concurrency 64, abuse 88 (logic appears when the `--logic` lane runs).
 - **Property + fuzz lane** verified end-to-end on captured tool output: a proptest counterexample flows merge → rank → emit and the dropped beacon `.md` carries `Property violated:` + `Reproducing input: x = 0, lo = 0, hi = -1`. All sub-lanes skip cleanly when their toolchain is absent.
 - **Beacons as Markdown** (root `beacons/`): `beacons/INDEX.md` + `beacons/*.md` carry the **file path + classification** of every issue; `bin/wipe-beacons` clears them; an agent skill (`.claude/skills/waypoint/`) drives scan→read→triage. (`emit_beacons.py`, 2 tests.)

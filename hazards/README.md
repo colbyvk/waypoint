@@ -4,7 +4,7 @@ This folder is the **plain-English source of truth** for Waypoint's detection ru
 Each file in this directory describes one *hazard* — a code shape worth an agent's
 attention — in language a domain expert can read, paired with one **bad** example
 (the shape we want to catch) and one **acceptable** example (the safe lookalike we
-must not nag about). The Semgrep rules under `infra/<language>/<classifier>/` are
+must not nag about). The Semgrep rules under `infra/core/<language>/<classifier>/` are
 *generated from* these descriptions, not the other way around. If a rule and a
 hazard file ever disagree, the hazard file wins and the rule gets fixed.
 
@@ -20,7 +20,7 @@ hazard file ever disagree, the hazard file wins and the rule gets fixed.
    `samples/monorepo/` (its `MANIFEST.md` maps every planted shape to a file and
    line, and the `WAYPOINT-OK:` comments mark the safe controls).
 3. **An agent writes the matching Semgrep rule** in
-   `infra/<language>/<classifier>/` — language first (`python/`, `react/`,
+   `infra/core/<language>/<classifier>/` — language first (`python/`, `react/`,
    `rust/`, `typescript/`), then classifier (`concurrency/`, `security/`,
    `abuse/`, `edge-case/`).
 4. **Validate it.** The rule must *fire on the bad example* and *stay silent on

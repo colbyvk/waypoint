@@ -11,7 +11,7 @@
 
 ## Checklist
 - [ ] `bin/waypoint --test` passes
-- [ ] `semgrep --validate --config infra` is clean (if rules changed)
+- [ ] `semgrep --validate --config infra/core` is clean (if rules changed)
 - [ ] Added a fixture (`samples/`, `WAYPOINT-PLANT` / `WAYPOINT-OK`) and a test for new behavior
 - [ ] For a detector change: pasted before/after beacon counts on a real repo below
 - [ ] No secrets, no vendored third-party code, no generated artifacts committed

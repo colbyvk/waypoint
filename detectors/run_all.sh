@@ -86,7 +86,7 @@ elif have semgrep; then
   # React is intentionally EXCLUDED here and run separately below: its rules are
   # languages:[typescript], so applied to ordinary .ts modules they misfire (e.g.
   # the "direct state mutation" proxy `$X.$F = $V` matches any `obj.field = x`).
-  cfg=(--config "$ROOT/infra/python" --config "$ROOT/infra/rust" --config "$ROOT/infra/typescript")
+  cfg=(--config "$ROOT/infra/core/python" --config "$ROOT/infra/core/rust" --config "$ROOT/infra/core/typescript")
   for extra in ${SEMGREP_EXTRA:-}; do cfg+=(--config "$extra"); done
   "$(bin semgrep)" "${cfg[@]}" "${SEMGREP_TARGETS[@]}" --json --output "$REPORTS/_semgrep.json" \
      --no-git-ignore --metrics=off --quiet 2>/dev/null || true
@@ -94,7 +94,7 @@ elif have semgrep; then
   # Pass 2 — React rules, scoped to React component files (*.tsx/*.jsx) via
   # --include so they never fire on plain TypeScript logic.
   log "semgrep (react rules, *.tsx/*.jsx only)"
-  "$(bin semgrep)" --config "$ROOT/infra/react" "${SEMGREP_TARGETS[@]}" \
+  "$(bin semgrep)" --config "$ROOT/infra/core/react" "${SEMGREP_TARGETS[@]}" \
      --include '*.tsx' --include '*.jsx' --json --output "$REPORTS/_semgrep_react.json" \
      --no-git-ignore --metrics=off --quiet 2>/dev/null || true
   [ -s "$REPORTS/_semgrep_react.json" ] && \
@@ -137,7 +137,7 @@ elif have ruff; then
   # project's ruff config is never read — same isolation as mypy's --config-file.
   # The config silences test-only noise (asserts/fixture-creds/seeded-RNG) in test
   # files; measured to remove ~575 S101 false positives from one real test suite.
-  "$(bin ruff)" check "${PY_TARGETS[@]}" --config "$ROOT/infra/ruff/waypoint.toml" \
+  "$(bin ruff)" check "${PY_TARGETS[@]}" --config "$ROOT/infra/core/ruff/waypoint.toml" \
      --output-format sarif > "$REPORTS/ruff.sarif" 2>/dev/null || true
   # ruff writes a valid empty SARIF even with findings; if it wrote nothing, drop it
   [ -s "$REPORTS/ruff.sarif" ] || rm -f "$REPORTS/ruff.sarif"
@@ -156,7 +156,7 @@ elif have mypy; then
   # Semgrep can't; tag_map routes them to the `logic` axis.
   # --config-file pins OUR config so the scanned project's mypy config — and any
   # `plugins=` it declares, which mypy would import/execute — is never read.
-  "$(bin mypy)" "${PY_TARGETS[@]}" --config-file="$ROOT/infra/mypy/waypoint.cfg" \
+  "$(bin mypy)" "${PY_TARGETS[@]}" --config-file="$ROOT/infra/core/mypy/waypoint.cfg" \
      --no-color-output --show-error-codes --show-column-numbers \
      --no-error-summary --ignore-missing-imports \
      --warn-unreachable --strict-equality --warn-no-return > "$REPORTS/_mypy.txt" 2>/dev/null || true
@@ -239,7 +239,7 @@ fi
 # which are attacker-controlled code). --no-config-lookup + our flat config means a
 # scanned project's eslint.config.* is never read or executed.
 ESLW="$ROOT/node_modules/.bin/eslint"
-ECFG="$ROOT/infra/eslint/waypoint.eslint.config.mjs"
+ECFG="$ROOT/infra/core/eslint/waypoint.eslint.config.mjs"
 if [ "$CHANGED" = 1 ] && [ ${#TS_TARGETS[@]} -eq 0 ]; then
   skip eslint "changed-mode: no changed JS/TS files"
 elif [ -x "$ESLW" ]; then

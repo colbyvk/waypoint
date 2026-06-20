@@ -1,7 +1,7 @@
 # ============================================================================
 # Tag map  —  off-the-shelf rule id  ->  Waypoint axes + agent hypothesis
 # ----------------------------------------------------------------------------
-# Our own Semgrep rules (infra/**) carry their axes and hypothesis in
+# Our own Semgrep rules (infra/core/**) carry their axes and hypothesis in
 # rule metadata, so they do NOT need an entry here. Every OTHER detector
 # (Bandit, Ruff, mypy, Clippy, gitleaks, Trivy, ...) emits rule ids that mean
 # nothing to Waypoint until this file gives them an axis and frames a question

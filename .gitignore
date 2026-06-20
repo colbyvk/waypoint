@@ -10,11 +10,11 @@ __pycache__/
 reports/
 beacons/
 
-# Generated beacon-schema docs — derived from infra/ + tag_map.yaml by
+# Generated beacon-schema docs — derived from infra/core/ + tag_map.yaml by
 # detectors/gen_schema_infra.py, so they never drift. Reproduced on demand; only
 # the hand-written README (the shared schema) is tracked.
-schema-infra/*
-!schema-infra/README.md
+infra/schema-infra/*
+!infra/schema-infra/README.md
 
 # Toolchain build dirs
 node_modules/

@@ -35,7 +35,7 @@ Scope of *enumeration* soundness:
   conservatively dark. Those are the next frontier (type-resolved edges), not this rung.
 
 ## 2. Per-property taint — SOUND *modulo assumptions*
-**Intra-file:** Semgrep **taint-mode** rules (`infra/<lang>/security/*-taint.yaml`)
+**Intra-file:** Semgrep **taint-mode** rules (`infra/core/<lang>/security/*-taint.yaml`)
 prove attacker-source → dangerous-sink flows within a function, with sanitizers
 cutting the flow — free, always-on. **Cross-file:** `--deep` / `--codeql` runs CodeQL
 cross-file taint. Both are sound **modulo their assumptions** (source/sink/sanitizer

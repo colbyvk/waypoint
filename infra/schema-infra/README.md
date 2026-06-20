@@ -1,22 +1,22 @@
-# schema-infra — the beacon schema, one document per beacon
+# infra/schema-infra — the beacon schema, one document per beacon
 
 This directory is the **canonical schema for beacons**. A beacon is the unit
 Waypoint passes downstream: "an agent should look here, and here is why." This
 README defines the shared schema; the per-beacon docs under
-`schema-infra/<language>/<classifier>/<rule-id>.md` (and `off-the-shelf/<tool>.md`)
+`infra/schema-infra/<language>/<classifier>/<rule-id>.md` (and `off-the-shelf/<tool>.md`)
 each document one beacon type — **what it is, where the detection code lives, and
 which linter(s) raise it**.
 
 > These docs are **generated** from the rules themselves by
-> `detectors/gen_schema_infra.py` (reads `infra/**/*.yaml` + `tag_map.yaml`), so
+> `detectors/gen_schema_infra.py` (reads `infra/core/**/*.yaml` + `tag_map.yaml`), so
 > "where the code lives" and "which linter fires" never drift from reality.
 > **The per-beacon docs are generated on demand and are not committed to git**
 > (only this README — the shared schema — is tracked). Populate them locally with:
 >
 >     python detectors/gen_schema_infra.py
 >
-> The human-authored source of truth for the rules is [`hazards/`](../hazards/)
-> (plain-English catalog) and [`infra/`](../infra/) (the Semgrep rules themselves).
+> The human-authored source of truth for the rules is [`hazards/`](../../hazards/)
+> (plain-English catalog) and [`infra/core/`](../core/) (the Semgrep rules themselves).
 
 ---
 
@@ -99,7 +99,7 @@ A beacon is **multi-tagged**; multi-axis regions score higher (the strongest che
 ## How this directory is laid out
 
 ```
-schema-infra/
+infra/schema-infra/
 ├── README.md                       # this file — the shared schema
 ├── INDEX.md                        # every beacon, grouped by language × axis (generated)
 ├── <language>/<classifier>/<rule-id>.md   # one doc per CUSTOM (Semgrep) beacon   (generated)
@@ -107,7 +107,7 @@ schema-infra/
 ```
 
 Each per-beacon doc states: the beacon's axes/severity/hypothesis, **where the
-detection code lives** (the `infra/…` rule file, or the wired tool), **which
+detection code lives** (the `infra/core/…` rule file, or the wired tool), **which
 linter(s) raise it** (the primary Semgrep rule plus any off-the-shelf detector
 that flags the same shape), the exact SARIF fields the beacon carries, and a
 bad/acceptable example. That is what makes each one a *proper beacon*: enough for a

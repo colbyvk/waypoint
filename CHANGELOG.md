@@ -64,7 +64,7 @@ First public release.
   real grammars → sound syntactic enumeration + reliable bodies (ERROR/MISSING →
   `parse-incomplete`, dark). Optional + graceful regex fallback; `--doctor` reports the
   backend. The coverage frontier is now uniform, not Python-only.
-- **Taint-mode Semgrep rules** (`infra/<lang>/security/*-taint.yaml`) — free intra-file
+- **Taint-mode Semgrep rules** (`infra/core/<lang>/security/*-taint.yaml`) — free intra-file
   source→sink dataflow (command/SQL/SSRF/code/deser/SSTI/path/XSS/redirect), with a
   regression test pinning the PLANT/OK fixture contract.
 - **TruffleHog verified-secrets lane** (opt-in) — confirms a credential is live

@@ -2,7 +2,7 @@
   "name": "waypoint-eslint",
   "version": "0.0.0",
   "private": true,
-  "description": "Waypoint-owned ESLint stack. run_all.sh runs this eslint with --no-config-lookup + infra/eslint/waypoint.eslint.config.mjs against scanned code, so the target's own eslint config/plugins are never loaded. Reproducible via `npm ci`.",
+  "description": "Waypoint-owned ESLint stack. run_all.sh runs this eslint with --no-config-lookup + infra/core/eslint/waypoint.eslint.config.mjs against scanned code, so the target's own eslint config/plugins are never loaded. Reproducible via `npm ci`.",
   "license": "Apache-2.0",
   "devDependencies": {
     "@microsoft/eslint-formatter-sarif": "^3.1.0",
