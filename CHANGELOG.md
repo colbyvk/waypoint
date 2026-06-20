@@ -6,6 +6,17 @@ All notable changes to Waypoint. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- **Leaned into the dark zone; cut detection to the additive core.** Repositioned the
+  pitch around the one thing no linter does — the **dark-zone map** (what a static pass
+  *couldn't* analyze) + reachability ranking — rather than rule count. Detection is now
+  explicitly *assembled*: **107 curated `infra/core/` rules** (taint-mode dataflow +
+  precise security/logic/IaC), with the **69 recall-biased proxy rules**
+  (concurrency/abuse/edge-case/authz) **retired to `infra/experimental/`** (off by
+  default, unmaintained) — [verification](docs/VALIDATION.md) showed they caused most of
+  the false positives while adding no unique detection. Commodity coverage is now
+  curated **OSS Semgrep packs** (`SEMGREP_EXTRA`). **Ranking:** non-core dirs
+  (examples/docs/scripts/extras/benchmarks) are down-weighted (`noncore_path_factor`) —
+  on Flask the top-15 went from 6/10 `examples/` to 0/15 (all shipping code). +3 tests.
 - **Repositioned as a tool, not an agentic harness.** Waypoint runs no model and
   **needs no API key** for anything it's for — the agent (or human) that *drives* it
   reads the beacons and verifies them. Reframed the README top + flow diagram, the

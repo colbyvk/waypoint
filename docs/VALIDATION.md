@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/colbyvk/waypoint/actions/workflows/ci.yml/badge.svg)](https://github.com/colbyvk/waypoint/actions/workflows/ci.yml)
 ![tests](https://img.shields.io/badge/tests-112%20passing-brightgreen)
-![rules](https://img.shields.io/badge/rules-176-blue)
+![rules](https://img.shields.io/badge/core%20rules-107%20curated-blue)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![languages](https://img.shields.io/badge/languages-Python%20%7C%20Rust%20%7C%20TypeScript%20%7C%20React-informational)
 
