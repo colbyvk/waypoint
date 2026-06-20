@@ -204,16 +204,18 @@ waypoint/
 ├── bin/waypoint-sandboxed    # run on UNTRUSTED code in a locked-down container (no net · ro · non-root)
 ├── Dockerfile                # the sandbox image
 ├── beacons/                  # dropped beacons land here on first scan: INDEX.md + <rank>_<hash>.md (run output, git-ignored)
-├── skills/waypoint/          # VENDOR-NEUTRAL agent skill (Claude/Gemini/ChatGPT/…): scan → verify → report
-│   └── (symlinked into .claude/skills/ so Claude Code auto-discovers it)
+├── skills/                   # VENDOR-NEUTRAL agent skills (symlinked into .claude/skills/ for auto-discovery)
+│   ├── waypoint/             #   scan → verify → report (drives the full engine)
+│   └── deploy-check/         #   "is it safe to ship?" — plain-English deploy verdict for vibe coders
 ├── waypoint.config.yaml      # which detectors run, budgets, thresholds, scoring
 ├── tag_map.yaml              # off-the-shelf rule id -> axes + agent hypothesis
 ├── infra/                    # detection infrastructure (rules + generated schema)
-│   ├── core/                 # the custom beacon-making rules, language-first then classifier
-│   │   ├── python/{security,edge-case,concurrency,abuse, iac}/
-│   │   ├── react/{security,edge-case,concurrency,abuse}/
-│   │   ├── rust/{security,edge-case,concurrency,abuse}/
-│   │   └── typescript/{security,edge-case,concurrency,abuse, iac}/   # iac = AWS-CDK rules
+│   ├── core/                 # the SHIPPING rules (107) — precise + additive, language-first then classifier
+│   │   ├── python/{security, logic, iac}/        # iac = AWS-CDK rules
+│   │   ├── react/{security, logic}/
+│   │   ├── rust/{security, logic}/
+│   │   └── typescript/{security, logic, iac}/
+│   ├── experimental/         # retired recall-biased proxies (concurrency/abuse/edge-case/authz) — OFF by default
 │   └── schema-infra/         # README = shared beacon schema; per-beacon docs generated on demand (git-ignored)
 ├── detectors/
 │   ├── install.sh            # venv + scanner install
@@ -229,7 +231,7 @@ waypoint/
 │   └── suppress.py           # content-hash store + allowlist (§9)
 ├── dispatch/
 │   ├── fallback_dispatcher.py# assemble envelope + verifier prompts (optional · headless)
-│   └── raptor/               # integration with the preferred RAPTOR harness
+│   └── raptor/               # integration with the optional RAPTOR harness
 ├── suppression/
 │   ├── store.json            # content-hash -> verdict + expiry (agent-written)
 │   └── allowlist.yaml        # human-accepted patterns (justification + expiry required)
