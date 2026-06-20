@@ -29,6 +29,24 @@ def test_score_three_axes_adds_capped_extra():
     assert abs(R.score_beacon(b, SCFG, 0.0, False) - (0.6 + 0.5 + 0.1)) < 1e-9
 
 
+# ---- non-core / test path down-weight (rank below shipping code) ---------- #
+def test_noncore_path_detects_non_shipping_dirs():
+    for p in ["examples/app.py", "docs/conf.py", "scripts/build.py",
+              "extras/x.py", "benchmarks/b.py", "demos/d.ts", "a/examples/b.py"]:
+        assert R.is_noncore_path(beacon(p, 1)), p
+
+
+def test_noncore_path_ignores_shipping_code():
+    for p in ["src/flask/app.py", "httpie/core.py", "lib/handler.ts", "documents.py"]:
+        assert not R.is_noncore_path(beacon(p, 1)), p
+
+
+def test_test_path_detected_and_distinct_from_shipping():
+    assert R.is_test_path(beacon("tests/test_app.py", 1))
+    assert R.is_test_path(beacon("pkg/x.test.ts", 1))
+    assert not R.is_test_path(beacon("src/app.py", 1))
+
+
 def test_score_boundary_and_centrality():
     b = beacon("app.py", 1, axes=["security"], prior=0.5)
     s = R.score_beacon(b, SCFG, norm_caller=1.0, boundary=True)

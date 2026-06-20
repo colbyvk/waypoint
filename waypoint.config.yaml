@@ -105,6 +105,10 @@ scoring:
   # 3-axis beacon (e.g. security+concurrency+abuse) edge out a 2-axis one.
   extra_axis_step: 0.10
   extra_axis_cap: 0.20
+  # Findings that are real but DON'T SHIP to users are sunk (never dropped) so a
+  # production-safety triage ranks shipping code first:
+  test_path_factor: 0.25     # tests/ __tests__/ spec/ test_*.py x.test.ts …
+  noncore_path_factor: 0.35  # examples/ docs/ demos/ extras/ scripts/ benchmarks/
   # Precision calibration (prioritise/calibration.py): turn past agent verdicts
   # into a per-rule score multiplier so chronically-dismissed rules sink and
   # confirmed ones rise. Neutral (factor 1.0) until verdicts accumulate. Recompute

@@ -128,6 +128,15 @@ _TEST_PATH_RX = re.compile(
     re.IGNORECASE,
 )
 
+# Non-core paths: examples, docs, build/packaging scripts, benchmarks. A finding
+# here is usually real but lives in code that doesn't ship to users — on a
+# production-safety triage it ranks below shipping code. (Validation showed
+# examples/ dominating Flask's top-10 and docs/extras/ httpie's.) Sunk, never dropped.
+_NONCORE_PATH_RX = re.compile(
+    r"(^|/)(examples?|docs?|demos?|extras?|scripts?|benchmarks?|bench)/",
+    re.IGNORECASE,
+)
+
 
 def is_test_path(beacon: dict) -> bool:
     try:
@@ -135,6 +144,14 @@ def is_test_path(beacon: dict) -> bool:
     except (KeyError, IndexError, TypeError):
         return False
     return bool(_TEST_PATH_RX.search(uri or ""))
+
+
+def is_noncore_path(beacon: dict) -> bool:
+    try:
+        uri = beacon["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+    except (KeyError, IndexError, TypeError):
+        return False
+    return bool(_NONCORE_PATH_RX.search(uri or ""))
 
 
 def main(argv=None):
@@ -235,11 +252,15 @@ def main(argv=None):
         fac = calibration.factor_for(rule_ids_of(b), calib, ccfg)
         # test/spec code is real but does not ship → sink it (configurable, never 0)
         tfac = float(scfg.get("test_path_factor", 0.25)) if is_test_path(b) else 1.0
-        w["score"] = round(score_beacon(b, scfg, norm, boundary) * fac * tfac, 4)
+        # non-core (examples/docs/scripts/…): real but doesn't ship → sink, don't drop
+        nfac = float(scfg.get("noncore_path_factor", 0.35)) if is_noncore_path(b) else 1.0
+        w["score"] = round(score_beacon(b, scfg, norm, boundary) * fac * tfac * nfac, 4)
         if fac != 1.0:
             w["calibration"] = {"factor": fac}
         if tfac != 1.0:
             w["test_path"] = True
+        if nfac != 1.0:
+            w["noncore_path"] = True
 
     active.sort(key=lambda b: (b["properties"][S.WP]["score"],
                                b["properties"][S.WP]["severity_prior"]), reverse=True)
